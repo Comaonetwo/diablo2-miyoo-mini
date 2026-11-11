@@ -1,0 +1,10 @@
+{
+  "source": "Forum-Regular.ttf",
+  "sha256": "5c9fbe9c4ce76d0269f5088d921d57e58082fd9c28433eacb6de95baf938adf8",
+  "size": 22,
+  "canvas_height": 20,
+  "top_crop": 4,
+  "primary_converted_name": "Port Readable",
+  "license": "OFL.txt",
+  "rasterizer": "Pillow 12.3.0"
+}

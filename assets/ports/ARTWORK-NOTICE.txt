@@ -1,0 +1,9 @@
+DIABLO II Ports thumbnail
+
+This promotional box artwork identifies Diablo II, a Blizzard Entertainment game.
+All rights in the original artwork and trademarks remain with their owners.
+The image is excluded from the GPL-3.0-or-later license of this project code.
+No additional artwork license or endorsement is claimed.
+
+The in-game animated logo is loaded from the user's own MPQ files.
+This project no longer embeds a static copy of that logo in the executable.

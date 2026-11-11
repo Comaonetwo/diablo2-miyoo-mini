@@ -1,0 +1,7 @@
+{
+  "source": "work/deps/SDL/src/stdlib/SDL_malloc.c",
+  "source_sha256": "673b9763297521596b7705e5f713d67fe92c3d35a7185cc171cd6ed11f61e4e2",
+  "component": "dlmalloc 2.8.6 core, SDL wrapper excluded",
+  "license": "dlmalloc public domain/CC0; SDL modifications zlib",
+  "configuration": "mmap, pthread locks, 16-byte alignment, prefixed symbols"
+}

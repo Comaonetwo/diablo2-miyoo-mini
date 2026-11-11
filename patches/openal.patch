@@ -1,0 +1,31 @@
+diff --git a/alc/alc.cpp b/alc/alc.cpp
+index cd7f92f..f5ef081 100644
+--- a/alc/alc.cpp
++++ b/alc/alc.cpp
+@@ -1971,7 +1971,7 @@ auto ResetDeviceParams(al::Device& device, const std::span<const AttributePair>
+             ctx->mFreeVoiceProps.store(nullptr, std::memory_order_relaxed);
+ 
+             ctx->mVoiceClusters.clear();
+-            ctx->allocVoices(std::max(256_uz,
++            ctx->allocVoices(std::max(ctx->mDevice.Type == DeviceType::Loopback ? 32_uz : 256_uz,
+                 ctx->mActiveVoiceCount.load(std::memory_order_relaxed)));
+         });
+ 
+diff --git a/alc/context.cpp b/alc/context.cpp
+index 7f11d8e..517e1d9 100644
+--- a/alc/context.cpp
++++ b/alc/context.cpp
+@@ -277,8 +277,11 @@ void Context::init()
+     mAsyncEvents = FifoBuffer<AsyncEvent>::Create(1024, false);
+     StartEventThrd(this);
+ 
+-    allocVoices(256);
+-    mActiveVoiceCount.store(64, std::memory_order_relaxed);
++    // A pull-driven loopback mixer (handheld PCM output) needs no desktop
++    // reserve of 256 voices. Source playback still grows the pool on demand.
++    const auto initial_voices = mDevice.Type == DeviceType::Loopback ? 32u : 256u;
++    allocVoices(initial_voices);
++    mActiveVoiceCount.store(std::min(64u, initial_voices), std::memory_order_relaxed);
+ }
+ 
+ void Context::deinit()

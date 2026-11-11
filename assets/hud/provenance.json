@@ -1,0 +1,7 @@
+{
+  "material": "src/hud_art.hpp",
+  "origin": "AI-generated UI material approved by project owner on 2026-10-20",
+  "processing": "Fixed pixel samples from generated full/empty HUD illustrations, encoded as RGB565 constexpr arrays",
+  "source_record": "Port development encode-hud-art-035; original MPQ statues, orb fills and changing game icons are loaded separately at runtime",
+  "license": "GPL-3.0-or-later for this project material"
+}

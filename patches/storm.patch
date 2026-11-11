@@ -1,0 +1,82 @@
+diff --git a/src/FileStream.cpp b/src/FileStream.cpp
+index 39db0a0..4d3dc4c 100644
+--- a/src/FileStream.cpp
++++ b/src/FileStream.cpp
+@@ -162,7 +162,7 @@ static bool BaseFile_Open(TFileStream * pStream, const TCHAR * szFileName, DWORD
+ 
+ #if defined(STORMLIB_MAC) || defined(STORMLIB_LINUX)
+     {
+-        struct stat64 fileinfo;
++        struct stat fileinfo;
+         int oflag = (dwStreamFlags & STREAM_FLAG_READ_ONLY) ? O_RDONLY : O_RDWR;
+         intptr_t handle;
+ 
+@@ -176,7 +176,7 @@ static bool BaseFile_Open(TFileStream * pStream, const TCHAR * szFileName, DWORD
+         }
+ 
+         // Get the file size
+-        if(fstat64(handle, &fileinfo) == -1)
++        if(fstat(handle, &fileinfo) == -1)
+         {
+             pStream->Base.File.hFile = INVALID_HANDLE_VALUE;
+             dwLastError = errno;
+@@ -239,7 +239,7 @@ static bool BaseFile_Read(
+         // we have to update the file position   xxx
+         if(ByteOffset != pStream->Base.File.FilePos)
+         {
+-            lseek64((intptr_t)pStream->Base.File.hFile, (off64_t)(ByteOffset), SEEK_SET);
++            lseek((intptr_t)pStream->Base.File.hFile, (off_t)(ByteOffset), SEEK_SET);
+             pStream->Base.File.FilePos = ByteOffset;
+         }
+ 
+@@ -310,7 +310,7 @@ static bool BaseFile_Write(TFileStream * pStream, ULONGLONG * pByteOffset, const
+         // we have to update the file position
+         if(ByteOffset != pStream->Base.File.FilePos)
+         {
+-            lseek64((intptr_t)pStream->Base.File.hFile, (off64_t)(ByteOffset), SEEK_SET);
++            lseek((intptr_t)pStream->Base.File.hFile, (off_t)(ByteOffset), SEEK_SET);
+             pStream->Base.File.FilePos = ByteOffset;
+         }
+ 
+@@ -371,7 +371,7 @@ static bool BaseFile_Resize(TFileStream * pStream, ULONGLONG NewFileSize)
+ 
+ #if defined(STORMLIB_MAC) || defined(STORMLIB_LINUX)
+     {
+-        if(ftruncate64((intptr_t)pStream->Base.File.hFile, (off64_t)NewFileSize) == -1)
++        if(ftruncate((intptr_t)pStream->Base.File.hFile, (off_t)NewFileSize) == -1)
+         {
+             dwLastError = errno;
+             return false;
+@@ -571,7 +571,7 @@ static bool BaseMap_Open(TFileStream * pStream, LPCTSTR szFileName, DWORD dwStre
+ 
+ #elif defined(STORMLIB_HAS_MMAP)
+ 
+-    struct stat64 fileinfo;
++    struct stat fileinfo;
+     intptr_t handle;
+     bool bResult = false;
+ 
+@@ -580,7 +580,7 @@ static bool BaseMap_Open(TFileStream * pStream, LPCTSTR szFileName, DWORD dwStre
+     if(handle != -1)
+     {
+         // Get the file size
+-        if(fstat64(handle, &fileinfo) != -1)
++        if(fstat(handle, &fileinfo) != -1)
+         {
+             pStream->Base.Map.pbFile = (LPBYTE)mmap(NULL, (size_t)fileinfo.st_size, PROT_READ, MAP_PRIVATE, handle, 0);
+             if(pStream->Base.Map.pbFile != NULL)
+@@ -2496,10 +2496,14 @@ TFileStream * FileStream_CreateFile(
+  * \a dwStreamFlags specifies the provider and base storage type
+  */
+ 
++extern TFileStream * D2Disc_Open(const TCHAR *, DWORD);
++
+ TFileStream * FileStream_OpenFile(
+     const TCHAR * szFileName,
+     DWORD dwStreamFlags)
+ {
++    if (strncmp(szFileName, "d2disc:", 7) == 0)
++        return D2Disc_Open(szFileName, dwStreamFlags);
+     DWORD dwProvider = dwStreamFlags & STREAM_PROVIDERS_MASK;
+     size_t nPrefixLength = FileStream_Prefix(szFileName, &dwProvider);
+ 

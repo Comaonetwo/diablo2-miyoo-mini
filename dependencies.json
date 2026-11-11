@@ -1,0 +1,27 @@
+{
+  "engine": {
+    "path": "work/sources/d2decomped",
+    "url": "https://github.com/psi29a/d2decomped.git",
+    "revision": "40e71e66a9595862140b6373a8f7adb32bf73998"
+  },
+  "storm": {
+    "path": "work/deps/StormLib",
+    "url": "https://github.com/ladislav-zezula/StormLib.git",
+    "revision": "86f9b99ffe4d3417dad16d00541cf6f2e3d7bf79"
+  },
+  "sdl": {
+    "path": "work/deps/SDL",
+    "url": "https://github.com/libsdl-org/SDL.git",
+    "revision": "d35636834af4cad1391cc385b44d920f08314395"
+  },
+  "openal": {
+    "path": "work/deps/openal",
+    "url": "https://github.com/kcat/openal-soft.git",
+    "revision": "4a52288b772d1722713675f71bb30f321e78fd80"
+  },
+  "cli11": {
+    "path": "work/deps/CLI11",
+    "url": "https://github.com/CLIUtils/CLI11.git",
+    "revision": "fb7eb86af71afde547c13d062e5aebfa27fc45c5"
+  }
+}
