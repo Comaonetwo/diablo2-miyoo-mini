@@ -1,4 +1,4 @@
-# Diablo II for Miyoo Mini — 0.2.85
+# Diablo II for Miyoo Mini — 0.2.87
 
 A community port of classic **Diablo II: Lord of Destruction** for Miyoo Mini / Mini Plus running Onion. Single-player acts **I–IV**; Act V, multiplayer and cinematics are disabled in this release.
 
@@ -6,7 +6,7 @@ A community port of classic **Diablo II: Lord of Destruction** for Miyoo Mini / 
 
 ## Install — no compiling required
 
-Download the release named **Diablo-II-Miyoo-0.2.85.zip**, not GitHub's “Source code” download. Extract it on your computer.
+Download the release named **Diablo-II-Miyoo-0.2.87.zip**, not GitHub's “Source code” download. Extract it on your computer.
 
 1. Enable **Ports Collection** in Onion: Apps → Package Manager → Verified.
 2. Copy `Roms/PORTS/Games/DiabloII` to the card's `Roms/PORTS/Games/` folder; copy `DIABLO II.port` into `Roms/PORTS/Shortcuts/` and `DIABLO II.png` into `Roms/PORTS/Imgs/`. Keep all other games. Do not replace the whole existing `Roms` folder.
@@ -73,6 +73,8 @@ The port stores saves and settings in `Roms/PORTS/Games/DiabloII/state/`. Back u
 SELECT combinations are short presses before cursor mode activates. SELECT+L2/R2 are reserved for Onion brightness. Full controls are available from MENU → Controls.
 
 ## Scope and known limits
+
+MENU → Options → Smooth camera offers Default (25 FPS cap) and Experimental (up to 50 FPS). Experimental is enabled by default for new settings and may reduce performance; game logic remains at 25 ticks per second. It interpolates camera, character, creature and projectile movement, without inventing sprite animation frames. Gold pickup is always enabled. Lighting offers Fast (default) and an optional Quality mode with wall light occlusion and bounded colored projectile lighting.
 
 The release retains the mechanics of the console-tested 0.2.81 candidate. Compact HUD, Readable/Original fonts, smoothing, controller panels, cube, equipment, mercenaries, saves, difficulties and original procedural levels are present for the supported scope.
 

@@ -300,3 +300,8 @@ add_test(NAME scalar-frame-filter-reference COMMAND d2-fb-scalar-test)
 add_executable(d2-frame-visibility-test tests/frame_visibility.cpp)
 target_include_directories(d2-frame-visibility-test PRIVATE src)
 add_test(NAME frame-visibility-before-decode COMMAND d2-frame-visibility-test)
+
+add_executable(d2-motion-samples-test tests/motion_samples.cpp)
+target_include_directories(d2-motion-samples-test PRIVATE src)
+target_compile_options(d2-motion-samples-test PRIVATE -UNDEBUG)
+add_test(NAME visual-motion-and-roof COMMAND d2-motion-samples-test)
