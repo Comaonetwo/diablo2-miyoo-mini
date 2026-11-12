@@ -1,4 +1,4 @@
-# Diablo II for Miyoo Mini — 0.2.83
+# Diablo II for Miyoo Mini — 0.2.85
 
 A community port of classic **Diablo II: Lord of Destruction** for Miyoo Mini / Mini Plus running Onion. Single-player acts **I–IV**; Act V, multiplayer and cinematics are disabled in this release.
 
@@ -6,7 +6,7 @@ A community port of classic **Diablo II: Lord of Destruction** for Miyoo Mini / 
 
 ## Install — no compiling required
 
-Download the release named **Diablo-II-Miyoo-0.2.83.zip**, not GitHub's “Source code” download. Extract it on your computer.
+Download the release named **Diablo-II-Miyoo-0.2.85.zip**, not GitHub's “Source code” download. Extract it on your computer.
 
 1. Enable **Ports Collection** in Onion: Apps → Package Manager → Verified.
 2. Copy `Roms/PORTS/Games/DiabloII` to the card's `Roms/PORTS/Games/` folder; copy `DIABLO II.port` into `Roms/PORTS/Shortcuts/` and `DIABLO II.png` into `Roms/PORTS/Imgs/`. Keep all other games. Do not replace the whole existing `Roms` folder.

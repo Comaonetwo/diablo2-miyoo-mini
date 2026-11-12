@@ -35,6 +35,56 @@ static void compact_pack_cases(GameData& data){
  auto invalid=make(41);invalid[0].column=9;CHECK(!d2mini::arrange_inventory(t,invalid)&&invalid[0].column==9);
  std::puts("PASS compact inventory: square small piles, twenty items in left5x4 leaving full-height pickup room, mixed equipment untouched, occupancy/identity and transactional full failure");
 }
+static void reddit_firestorm_sound_cases(GameData& data){
+ World w(&data,-1,-1);Level arena;arena.id=2;arena.ds1=d2d::ds1::Map(64,64,0,1);arena.walk.resize(320*320);w.level=&arena;w.player.x=w.player.y=20;
+ auto& f=w.fight;auto& c=w.character;c.character_class=5;c.stats.values[kLevel]=6;c.stats.values[kLife]=c.stats.values[kMaxLife]=256000;c.stats.values[kMana]=c.stats.values[kMaxMana]=256000;
+ const auto* fire=f.skill_named("Firestorm");CHECK(fire&&fire->start_sound>0);const auto& ids=data.skills.class_ids[5];const auto learned=std::ranges::find(ids,fire->id);CHECK(learned!=ids.end());c.stats.skills[std::size_t(learned-ids.begin())]=1;const auto flame=data.missiles.find("firestorm");CHECK(flame!=data.missiles.end());
+ auto mob=make_monster(data,data.monsters.row("quillrat1"),20,20,f.rng,0);mob.id=101;mob.hit_points=mob.stats.hit_points=1000;f.monsters={mob};
+ for(int i=0;i<3;++i){Missile m;m.info=&flame->second;m.skill=fire->id;m.level=1;m.friendly=true;m.x=m.y=20;m.born=0;m.dies=600;f.missiles.push_back(m);}
+ f.missile_tick(40);CHECK(f.monsters[0].hit_points==1000&&f.monsters[0].dot_acc>0);
+ for(int i=2;i<=12;++i)f.missile_tick(unsigned(i*40));CHECK(f.monsters[0].hit_points<1000&&f.monsters[0].hit_points>=996);
+ CHECK(!f.skill_missile_hits(f.missiles[0],0,500));
+ f.monsters[0]=mob;f.monsters[0].boss_res[2]=100-data.monsters.types[std::size_t(mob.type)].diff[0].res[2];
+ for(int i=13;i<=24;++i)f.missile_tick(unsigned(i*40));CHECK(f.monsters[0].hit_points==1000);
+ f.cues.due.clear();CHECK(f.cast_missile(fire->id,22,20,1000));CHECK(std::ranges::any_of(f.cues.due,[&](const auto& cue){return cue.sound==fire->start_sound;}));
+ f.pmode=-1;c.stats.values[kMana]=0;f.cues.due.clear();CHECK(!f.cast_missile(fire->id,22,20,2000));CHECK(std::ranges::none_of(f.cues.due,[&](const auto& cue){return cue.sound==fire->start_sound;}));
+ for(auto name:{"Firestorm","Fire Bolt","Ice Bolt","Charged Bolt"}){const auto* skill=f.skill_named(name);CHECK(skill&&skill->start_sound>0);const auto& sound=data.sounds[std::size_t(skill->start_sound)];CHECK(!sound.file.empty()&&!sound.loop);auto wav=data.mpqs.try_read(std::string(R"(data\global\sfx\)")+sound.file);if(!wav)wav=data.mpqs.try_read(std::string(R"(data\local\sfx\)")+sound.file);CHECK(wav&&wav->size()>44);}
+ const auto bolt=data.missiles.find("firebolt");CHECK(bolt!=data.missiles.end()&&bolt->second.hit_sound>0);f.monsters={mob};f.cues.due.clear();Missile shot;shot.info=&bolt->second;shot.skill=f.skill_named("Fire Bolt")->id;shot.level=1;shot.friendly=true;f.strike(shot,0,3000);CHECK(std::ranges::any_of(f.cues.due,[&](const auto& cue){return cue.sound==bolt->second.hit_sound;}));
+ std::puts("PASS Reddit regression: level-one Firestorm retains fractional damage over time, overlapping flames, fire immunity; cast sound only on success; original Druid/Sorc sample files and FireBolt impact cue");
+}
+
+
+static void breath_and_action_sound_cases(GameData& data){
+ World w(&data,-1,-1);Level arena;arena.id=2;arena.ds1=d2d::ds1::Map(64,64,0,1);arena.walk.resize(320*320);w.level=&arena;w.player.x=w.player.y=20;
+ auto& f=w.fight;auto& c=w.character;c.stats.values[kLevel]=30;c.stats.values[kLife]=c.stats.values[kMaxLife]=256000;c.stats.values[kMana]=c.stats.values[kMaxMana]=256000;f.skill_level=[](int){return 1;};
+ auto mob=make_monster(data,data.monsters.row("quillrat1"),20,20,f.rng,0);mob.id=101;mob.hit_points=mob.stats.hit_points=1000;
+ for(auto name:{"Inferno","Arctic Blast","Inferno Sentry"}){
+  const auto* skill=f.skill_named(name);CHECK(skill);const auto* row=f.skill_missile(*skill,true);if(std::string_view(name)=="Inferno Sentry")row=&data.missiles.at("inferno sentry 1");CHECK(row);
+  f.monsters={mob};f.monsters[0].boss_res={};const int element=skill->etype==2?4:2;f.monsters[0].boss_res[std::size_t(element)]=-data.monsters.types[std::size_t(mob.type)].diff[0].res[std::size_t(element)];
+  Missile shot;shot.info=row;shot.skill=skill->id;shot.level=1;shot.friendly=true;
+  f.strike(shot,0,1000);if(skill->etype==2){CHECK(f.monsters[0].hit_points==1000);CHECK(f.monsters[0].chill_until>1000);}
+  for(int i=1;i<100;++i)f.strike(shot,0,1000+unsigned(i)*40);
+  const int lost=1000-f.monsters[0].hit_points;CHECK(lost>10&&lost<400&&f.monsters[0].dot_acc>=0&&f.monsters[0].dot_acc<1);
+  f.monsters[0]=mob;f.monsters[0].boss_res[std::size_t(element)]=100-data.monsters.types[std::size_t(mob.type)].diff[0].res[std::size_t(element)];
+  for(int i=0;i<100;++i)f.strike(shot,0,6000+unsigned(i)*40);
+  CHECK(f.monsters[0].hit_points==1000&&f.monsters[0].dot_acc==0&&f.monsters[0].chill_until==0);
+  if(skill->srvdofunc==ServerDoFunction::kBreath){CHECK(row->travel_sound>0);f.cues.due.clear();f.fire(*skill,11000,Fight::Caster{.x=20,.y=20,.level=1,.to_x=24,.to_y=20});CHECK(std::ranges::any_of(f.cues.due,[&](const auto& cue){return cue.sound==row->travel_sound;}));}
+ }
+ for(auto name:{"Fire Trauma","Shock Field","Telekinesis"}){
+  const auto* skill=f.skill_named(name);CHECK(skill&&skill->action_sound>0);f.cues.due.clear();Fight::Caster cast{.x=20,.y=20,.level=1,.to_x=24,.to_y=20};
+  if(f.missile_skill(*skill))f.fire(*skill,12000,cast);else f.spot(*skill,12000,cast);
+  CHECK(std::ranges::any_of(f.cues.due,[&](const auto& cue){return cue.sound==skill->action_sound;}));
+ }
+ CHECK(f.skill_named("Find Item")->start_sound>0&&f.skill_named("Jab")->start_sound>0);
+ for(auto name:{"Tiger Strike","Cobra Strike"}){const auto* skill=f.skill_named(name);CHECK(skill&&skill->progress_sound>0);f.cues.due.clear();f.charge(*skill,13000);CHECK(std::ranges::any_of(f.cues.due,[&](const auto& cue){return cue.sound==skill->progress_sound;}));}
+ // Default (ordinary projectile) rounding remains unchanged; stream-only precision.
+ d2d::rules::MissileDamage tiny{.etype=0,.elo=128,.ehi=128};d2d::rules::Target target;d2d::rules::Rng rng{3};double carry=0;
+ CHECK(d2d::rules::missile_blow(tiny,target,{},rng).damage==0);
+ CHECK(d2d::rules::missile_blow(tiny,target,{},rng,{.hit=true},&carry).damage==0&&carry==.5);
+ CHECK(d2d::rules::missile_blow(tiny,target,{},rng,{.hit=true},&carry).damage==1&&carry==0);
+ std::puts("PASS related skill regression: level-one Inferno/Arctic Blast/Inferno Sentry fractional damage and elemental immunity, Arctic chill below one HP, finite breath cues, Assassin bomb/web and Telekinesis action sounds, class start fallback, ordinary projectile rounding unchanged");
+}
+
 static void attack_panel_cases(GameData& data){
  World w(&data,-1,-1);Level arena;arena.id=2;arena.ds1=d2d::ds1::Map(64,64,0,1);arena.walk.resize(320*320);w.level=&arena;w.player.x=w.player.y=20;
  auto& f=w.fight;auto& c=w.character;c.stats.values[kLevel]=40;c.stats.values[kLife]=c.stats.values[kMaxLife]=256000;f.skill_level=[](int){return 10;};
@@ -1224,7 +1274,7 @@ static void synthetic(){
  std::puts("PASS item event grouping, free casting, source filtering, aura stacking/range, inactive aura exclusion, merc poison/leech/LifeTap/speed and trap scaling");
 }
 int main(int argc,char**argv)try{synthetic();flat_reduction_cases();
- if(argc>1){auto data=load_game_data(argv[1],std::filesystem::path(argv[1])/"LODPatch_114d.exe",3,false);CHECK(data);attack_panel_cases(*data);missile_damage_function_cases(*data);animation_and_motion_cases(*data);compact_pack_cases(*data);state_group_health_cases(*data);cold_curse_enchant_cases(*data);shadow_passive_cases(*data);shared_trap_cap_cases(*data);summon_death_cases(*data);shadow_finisher_cases(*data);dragon_tail_cases(*data);shadow_affix_child_cases(*data);shadow_item_projectile_cases(*data);contagion_equipment_cases(*data);rabies_shadow_cases(*data);poison_item_cases(*data);socket_durability_cases(*data,argv[1]);summon_level_cases(*data);real_replenish_cases(*data);explicit_cast_cases(*data);ammo_fill_cases(*data);shop_fill_cases(*data);inferno_stream_cases(*data);shadow_flight_cases(*data);allied_aura_cases(*data);pickup_gamble_corpse_cases(*data);skill_completion_cases(*data);incoming_defense_cases(*data);inventory_continuation_cases(*data);broad_mechanics_cases(*data);friendly_recovery_cases(*data);flat_reduction_world_cases(*data);magic_lifetap_cases(*data);pet_curse_cases(*data);reflection_cases(*data);revived_cases(*data);World world(&*data,-1,-1);auto& f=world.fight;auto& c=world.character;c.character_class=3;c.stats.values[kLevel]=30;c.stats.values[kMaxLife]=c.stats.values[kLife]=256000;c.stats.values[kMaxMana]=25600;c.stats.values[kMana]=0;
+ if(argc>1){auto data=load_game_data(argv[1],std::filesystem::path(argv[1])/"LODPatch_114d.exe",3,false);CHECK(data);reddit_firestorm_sound_cases(*data);breath_and_action_sound_cases(*data);attack_panel_cases(*data);missile_damage_function_cases(*data);animation_and_motion_cases(*data);compact_pack_cases(*data);state_group_health_cases(*data);cold_curse_enchant_cases(*data);shadow_passive_cases(*data);shared_trap_cap_cases(*data);summon_death_cases(*data);shadow_finisher_cases(*data);dragon_tail_cases(*data);shadow_affix_child_cases(*data);shadow_item_projectile_cases(*data);contagion_equipment_cases(*data);rabies_shadow_cases(*data);poison_item_cases(*data);socket_durability_cases(*data,argv[1]);summon_level_cases(*data);real_replenish_cases(*data);explicit_cast_cases(*data);ammo_fill_cases(*data);shop_fill_cases(*data);inferno_stream_cases(*data);shadow_flight_cases(*data);allied_aura_cases(*data);pickup_gamble_corpse_cases(*data);skill_completion_cases(*data);incoming_defense_cases(*data);inventory_continuation_cases(*data);broad_mechanics_cases(*data);friendly_recovery_cases(*data);flat_reduction_world_cases(*data);magic_lifetap_cases(*data);pet_curse_cases(*data);reflection_cases(*data);revived_cases(*data);World world(&*data,-1,-1);auto& f=world.fight;auto& c=world.character;c.character_class=3;c.stats.values[kLevel]=30;c.stats.values[kMaxLife]=c.stats.values[kLife]=256000;c.stats.values[kMaxMana]=25600;c.stats.values[kMana]=0;
   const auto* holy=f.skill_named("Holy Fire");CHECK(holy);const auto& ids=data->skills.class_ids[3];const auto at=std::ranges::find(ids,holy->id);CHECK(at!=ids.end());c.stats.skills[std::size_t(at-ids.begin())]=10;f.aura=0;f.update_fighters(0);CHECK(f.player_combat.elem[0].second==0);f.aura=holy->id;f.update_fighters(40);CHECK(f.player_combat.elem[0].second>0);f.aura=0;c.stats.skills.fill(0);
   const auto* meditation=f.skill_named("Meditation");CHECK(meditation);c.items={worn("cap",1,{{151,meditation->id,12}})};f.update_fighters(80);CHECK(f.psum[27]>0&&f.aura_sources.size()==1&&f.aura_sources[0].level==12);
   const auto* amplify=f.skill_named("Amplify Damage");const auto* nova=f.skill_named("Nova");CHECK(amplify&&nova);c.items={worn("cap",1,{{198,(amplify->id<<6)|1,100},{201,(nova->id<<6)|3,100}})};f.update_fighters(120);Monster fallen;fallen.type=data->monsters.row("fallen1");CHECK(fallen.type>=0);fallen.hit_points=1000;fallen.stats.hit_points=1000;fallen.stats.level=1;f.add_monster(fallen);f.item_event(f.OnHit,0,120);f.run_item_casts(120);CHECK(f.monsters[0].curse.skill==amplify->id&&c.stats.get(kMana)==0);f.item_event(f.OnStruck,0,160);f.run_item_casts(160);CHECK(!f.pending.empty()&&c.stats.get(kMana)==0);
