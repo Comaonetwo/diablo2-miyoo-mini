@@ -58,7 +58,7 @@ void PortUI::input(const pad::Sample& sample,std::span<const SDL_Keycode> keys,f
         else if(row==2)compact=!compact;
         else if(row==3)sound=!sound;
         else if(row==4)world_big=(world_big+direction+3)%3;
-        else if(row==5)loot_near=!loot_near;
+        else if(row==5)dim_loot=!dim_loot;
         else if(row==6)map_opacity=((map_opacity/25-1+direction+4)%4+1)*25;
         else if(row==7)readable_font=!readable_font;
         else if(row==8)belt_sequential=!belt_sequential;
@@ -118,7 +118,7 @@ void PortUI::draw(std::vector<std::uint8_t>& f,const Scene& scene) const {
   const char* labels[]{"Options","Controls","Resume Game","Save and return to menu","Exit Game"};
   for(int i=0;i<5;++i){const int y=275+i*47;if(i==row)rect(f,180,y-8,440,36,{64,51,33});const int width=font.measure(labels[i]);font.draw_tinted(f,800,600,pal,(800-width)/2,y,labels[i],i==row?255:220,i==row?214:214,i==row?139:205);}
  }else{
-  const std::string labels[]{std::string("Text: ")+(text_scale>100?"Big":"Default"),std::string("Panels: ")+(ui_scale>100?"Big":"Default"),std::string("HUD: ")+(compact?"Compact":"Original"),std::string("Sound: ")+(sound?"On":"Off"),std::string("World: ")+(world_big==2?"Closer (480)":world_big==1?"Big (640)":"Default (800)"),std::string("Loot selection: ")+(loot_near?"Nearby":"Cursor"),std::string("Map opacity: ")+std::to_string(map_opacity)+"%",std::string("Font: ")+(readable_font?"Readable":"Original"),std::string("Belt: ")+(belt_sequential?"Sequential":"Potions"),std::string("Belt refill: ")+(belt_refill?"On":"Off"),std::string("SFX volume: ")+std::to_string(sfx_volume)+"%",std::string("Music volume: ")+std::to_string(music_volume)+"%",std::string("Smooth camera: ")+(smooth_camera?"Experimental":"Default"),std::string("Lighting: ")+(fast?"Fast":"Quality")};
+  const std::string labels[]{std::string("Text: ")+(text_scale>100?"Big":"Default"),std::string("Panels: ")+(ui_scale>100?"Big":"Default"),std::string("HUD: ")+(compact?"Compact":"Original"),std::string("Sound: ")+(sound?"On":"Off"),std::string("World: ")+(world_big==2?"Closer (480)":world_big==1?"Big (640)":"Default (800)"),std::string("Combat loot: ")+(dim_loot?"Dim":"Normal"),std::string("Map opacity: ")+std::to_string(map_opacity)+"%",std::string("Font: ")+(readable_font?"Readable":"Original"),std::string("Belt: ")+(belt_sequential?"Sequential":"Potions"),std::string("Belt refill: ")+(belt_refill?"On":"Off"),std::string("SFX volume: ")+std::to_string(sfx_volume)+"%",std::string("Music volume: ")+std::to_string(music_volume)+"%",std::string("Smooth camera: ")+(smooth_camera?"Experimental":"Default"),std::string("Lighting: ")+(fast?"Fast":"Quality")};
   static_assert(std::size(labels)==option_count);
   const int first=std::clamp(row-3,0,option_count-7);
   for(int i=first;i<std::min(option_count,first+7);++i){const int y=108+(i-first)*56;if(i==row)rect(f,58,y-5,350,30,{64,51,33});font.draw_tinted(f,800,600,pal,79,y,labels[i],i==row?255:220,i==row?214:214,i==row?139:205);}
@@ -128,7 +128,7 @@ void PortUI::draw(std::vector<std::uint8_t>& f,const Scene& scene) const {
    {"HUD layout","Compact belt and globes","or the original interface."},
    {"Game audio","Enable or mute music,","voices and sound effects."},
    {"World scale","800: wide; 640: closer.","480: largest world details."},
-   {"Loot selection","Nearby lets Y select loot","from a greater distance."},
+   {"Loot labels in combat","Dim labels behind fighters.","Selected loot stays bright."},
    {"Automap opacity","Change map transparency.","Lower shows more world."},
    {"Panel font","Readable uses bold Forum.","Original keeps Diablo glyphs."},
    {"Belt controls","Potions: L = HP, R = mana.","Sequential: L/R scan slots."},

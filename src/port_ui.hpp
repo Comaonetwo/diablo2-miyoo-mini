@@ -19,7 +19,7 @@ struct PortUI {
     std::vector<std::uint8_t> backdrop;
     void capture(const std::vector<std::uint8_t>& frame);
     int world_big=0; // 0: 800, 1: 640, 2: 480 logical world width
-    bool fast=true, sound=true,compact=true,loot_near=true,readable_font=true,smooth=true,belt_sequential=false,belt_refill=false,sharp_panel_text=false;
+    bool fast=true, sound=true,compact=true,dim_loot=true,readable_font=true,smooth=true,belt_sequential=false,belt_refill=false,sharp_panel_text=false;
     std::array<bool,std::size_t(d2d::client::pad::Button::Count)> previous{};
     std::array<float,4> repeats{};
     void show(const d2d::client::pad::Sample& sample) {open=true;controls=false;options=false;row=2;scroll=0;return_menu=false;closing=close_quit=close_return=false;fade_start=SDL_GetTicks();smooth=true;sharp_panel_text=true;previous=sample.held;repeats={};}
