@@ -6,6 +6,13 @@
 using namespace d2d::client::pad;
 #define check(yes) do{if(!(yes))throw std::runtime_error("digital control check failed at line "+std::to_string(__LINE__));}while(false)
 int main()try{
+    {Mapper belt;Sample q;q.digital=true;q.held[std::size_t(Button::North)]=true;
+     auto a=belt.step(q,Context::Panel,.04f);check(a.return_belt&&!a.quick_drop&&!a.rclick_press);
+     check(!belt.step(q,Context::Panel,.04f).return_belt);
+     belt.step({},Context::Panel,.04f);q.held[std::size_t(Button::Back)]=true;
+     a=belt.step(q,Context::Panel,.04f);check(a.quick_drop&&!a.return_belt);
+     Mapper shop;q.held[std::size_t(Button::Back)]=false;check(!shop.step(q,Context::Shop,.04f).return_belt);}
+
     {Mapper slow;Sample q;q.digital=true;q.held[std::size_t(Button::Back)]=true;
      slow.step(q,Context::Game,.1f,.8f); // time before the press does not count
      slow.step(q,Context::Game,.1f,.35f);slow.step(q,Context::Game,.1f,.35f);

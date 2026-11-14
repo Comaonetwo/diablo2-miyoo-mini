@@ -22,8 +22,8 @@ std::string inspect_hud_assets(const Scene& s,const std::filesystem::path& dir) 
  return out+"ok\n";
 }
 namespace {
-std::array<std::string_view,21> control_lines(bool belt_sequential){
- return {"D-PAD: Move / select","B: Attack / talk / confirm","Y: Loot / portal / entrance / item","X: Right skill   A: Back / skills",belt_sequential?"L: Slots left to right; R: right to left":"L: Heal   R: Mana (any belt slot)","SELECT + L / R: Belt slots 3 / 4","SELECT + Y: Move inventory item to belt","SELECT + X: Drop inventory item","SELECT + Y: Swap weapons in the field","L2: Stats   R2: Inventory","SELECT + UP: Skill tree","SELECT + DOWN: Quests","SELECT + LEFT: Belt; D-pad select / Y use","SELECT + RIGHT: Mercenary","SELECT + X: Run / walk","Tap SELECT: Map   Hold 1s: Cursor","Y: Buy / sell in shop  L/R: Shop tabs","SELECT + Y: Fill consumables in shop","SELECT + START: Arrange inventory",
+std::array<std::string_view,22> control_lines(bool belt_sequential){
+ return {"D-PAD: Move / select","B: Attack / talk / confirm","Y: Loot / portal / entrance / item","X: Right skill   A: Back / skills",belt_sequential?"L: Slots left to right; R: right to left":"L: Heal   R: Mana (any belt slot)","SELECT + L / R: Belt slots 3 / 4","SELECT + Y: Move inventory item to belt","SELECT + X: Drop inventory item","SELECT + Y: Swap weapons in the field","L2: Stats   R2: Inventory","SELECT + UP: Skill tree","SELECT + DOWN: Quests","SELECT + LEFT: Expanded belt","Belt: D-pad select; Y use; X to inventory","SELECT + RIGHT: Mercenary","SELECT + X: Run / walk","Tap SELECT: Map   Hold 1s: Cursor","Y: Buy / sell in shop  L/R: Shop tabs","SELECT + Y: Fill consumables in shop","SELECT + START: Arrange inventory",
   "MENU: Port menu","MENU + SELECT: Exit game"};
 }
 constexpr int control_visible=8;

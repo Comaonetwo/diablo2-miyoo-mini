@@ -165,7 +165,7 @@ void draw_compact_hud(std::vector<std::uint8_t>& out,const Scene& s,const SkillB
  if(popup){
   const int rows=belt.boxes/4;const int top=rows>1?layout.popup(rows-1).target.y:layout.pieces[5].target.y;
   const auto& font=s.readable_font.glyph_count()?s.readable_font:s.font;
-  const std::string hint="D-PAD: Select   Y: Use   A: Back";const int width=font.measure(hint),x=std::max(0,(800-width)/2),y=std::max(0,top-font.line_height()-7);
+  const std::string hint="D-PAD: Select  Y: Use  X: Inventory  A: Back";const int width=font.measure(hint),x=std::max(0,(800-width)/2),y=std::max(0,top-font.line_height()-7);
   for(int j=y-2;j<y+font.line_height()+2;++j)for(int i=x-4;i<x+width+4;++i)if(i>=0&&i<800&&j>=0&&j<600){auto*p=out.data()+(j*800+i)*4;p[0]=p[1]=p[2]=0;p[3]=255;}
   draw_control_hint(font,out,pal,x,y,hint);
   for(int row=0;row<rows;++row)for(int col=0;col<4;++col){auto b=row?layout.popup(row).target:layout.belt_slots[col].target;b.x=layout.core_x+col*84;b.w=84;
