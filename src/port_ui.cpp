@@ -22,12 +22,12 @@ std::string inspect_hud_assets(const Scene& s,const std::filesystem::path& dir) 
  return out+"ok\n";
 }
 namespace {
-std::array<std::string_view,22> control_lines(bool belt_sequential){
- return {"D-PAD: Move / select","B: Attack / talk / confirm","Y: Loot / portal / entrance / item","X: Right skill   A: Back / skills",belt_sequential?"L: Slots left to right; R: right to left":"L: Heal   R: Mana (any belt slot)","SELECT + L / R: Belt slots 3 / 4","SELECT + Y: Move inventory item to belt","SELECT + X: Drop inventory item","SELECT + Y: Swap weapons in the field","L2: Stats   R2: Inventory","SELECT + UP: Skill tree","SELECT + DOWN: Quests","SELECT + LEFT: Expanded belt","Belt: D-pad select; Y use; X to inventory","SELECT + RIGHT: Mercenary","SELECT + X: Run / walk","Tap SELECT: Map   Hold 1s: Cursor","Y: Buy / sell in shop  L/R: Shop tabs","SELECT + Y: Fill consumables in shop","SELECT + START: Arrange inventory",
-  "MENU: Port menu","MENU + SELECT: Exit game"};
+std::array<std::string_view,23> control_lines(bool belt_sequential){
+ return {"D-PAD: Move / select","B: Attack / loot / talk / confirm","Y: Portal / entrance / loot / item","X: Right skill   A: Back / skills",belt_sequential?"L: Slots left to right; R: right to left":"L: Heal   R: Mana (any belt slot)","SELECT + L / R: Belt slots 3 / 4","SELECT + Y: Move inventory item to belt","SELECT + X: Drop inventory item","SELECT + Y: Swap weapons in the field","L2: Stats   R2: Inventory","SELECT + UP: Skill tree","SELECT + DOWN: Quests","SELECT + LEFT: Expanded belt","Belt: D-pad select; Y use; X to inventory","SELECT + RIGHT: Mercenary","SELECT + X: Run / walk","Tap SELECT: Map   Hold 1s: Cursor","Y: Buy / sell in shop  L/R: Shop tabs","SELECT + Y: Fill consumables in shop","SELECT + START: Arrange inventory",
+  "Stash: Select gold counter; B deposit/withdraw","MENU: Port menu","MENU + SELECT: Exit game"};
 }
 constexpr int control_visible=8;
-constexpr int option_count=14;
+constexpr int option_count=15;
 }
 void PortUI::input(const pad::Sample& sample,std::span<const SDL_Keycode> keys,float seconds) {
     changed=false;quit=false;return_menu=false;
@@ -67,6 +67,7 @@ void PortUI::input(const pad::Sample& sample,std::span<const SDL_Keycode> keys,f
         else if(row==11)music_volume=std::clamp(music_volume+direction*5,0,100);
         else if(row==12)smooth_camera=!smooth_camera;
         else if(row==13)fast=!fast;
+        else if(row==14)vital_numbers=!vital_numbers;
         smooth=sharp_panel_text=true;changed=true;
     }
     previous=sample.held;
@@ -118,7 +119,7 @@ void PortUI::draw(std::vector<std::uint8_t>& f,const Scene& scene) const {
   const char* labels[]{"Options","Controls","Resume Game","Save and return to menu","Exit Game"};
   for(int i=0;i<5;++i){const int y=275+i*47;if(i==row)rect(f,180,y-8,440,36,{64,51,33});const int width=font.measure(labels[i]);font.draw_tinted(f,800,600,pal,(800-width)/2,y,labels[i],i==row?255:220,i==row?214:214,i==row?139:205);}
  }else{
-  const std::string labels[]{std::string("Text: ")+(text_scale>100?"Big":"Default"),std::string("Panels: ")+(ui_scale>100?"Big":"Default"),std::string("HUD: ")+(compact?"Compact":"Original"),std::string("Sound: ")+(sound?"On":"Off"),std::string("World: ")+(world_big==2?"Closer (480)":world_big==1?"Big (640)":"Default (800)"),std::string("Combat loot: ")+(dim_loot?"Dim":"Normal"),std::string("Map opacity: ")+std::to_string(map_opacity)+"%",std::string("Font: ")+(readable_font?"Readable":"Original"),std::string("Belt: ")+(belt_sequential?"Sequential":"Potions"),std::string("Belt refill: ")+(belt_refill?"On":"Off"),std::string("SFX volume: ")+std::to_string(sfx_volume)+"%",std::string("Music volume: ")+std::to_string(music_volume)+"%",std::string("Smooth camera: ")+(smooth_camera?"Experimental":"Default"),std::string("Lighting: ")+(fast?"Fast":"Quality")};
+  const std::string labels[]{std::string("Text: ")+(text_scale>100?"Big":"Default"),std::string("Panels: ")+(ui_scale>100?"Big":"Default"),std::string("HUD: ")+(compact?"Compact":"Original"),std::string("Sound: ")+(sound?"On":"Off"),std::string("World: ")+(world_big==2?"Closer (480)":world_big==1?"Big (640)":"Default (800)"),std::string("Combat loot: ")+(dim_loot?"Dim":"Normal"),std::string("Map opacity: ")+std::to_string(map_opacity)+"%",std::string("Font: ")+(readable_font?"Readable":"Original"),std::string("Belt: ")+(belt_sequential?"Sequential":"Potions"),std::string("Belt refill: ")+(belt_refill?"On":"Off"),std::string("SFX volume: ")+std::to_string(sfx_volume)+"%",std::string("Music volume: ")+std::to_string(music_volume)+"%",std::string("Smooth camera: ")+(smooth_camera?"Experimental":"Default"),std::string("Lighting: ")+(fast?"Fast":"Quality"),std::string("HP / Mana: ")+(vital_numbers?"On":"Off")};
   static_assert(std::size(labels)==option_count);
   const int first=std::clamp(row-3,0,option_count-7);
   for(int i=first;i<std::min(option_count,first+7);++i){const int y=108+(i-first)*56;if(i==row)rect(f,58,y-5,350,30,{64,51,33});font.draw_tinted(f,800,600,pal,79,y,labels[i],i==row?255:220,i==row?214:214,i==row?139:205);}
@@ -136,7 +137,8 @@ void PortUI::draw(std::vector<std::uint8_t>& f,const Scene& scene) const {
    {"Sound effects volume","Adjust voices and effects.","Music has its own volume."},
    {"Music volume","Adjust the soundtrack.","Effects keep their volume."},
    {"Smooth visual motion","Up to 50 FPS; logic 25 Hz.","May reduce performance."},
-   {"Lighting quality","Quality: color and shadows.","Slower in busy scenes."}};
+   {"Lighting quality","Quality: color and shadows.","Slower in busy scenes."},
+   {"Health and mana","Show current / maximum","inside the two globes."}};
   static_assert(std::size(descriptions)==option_count);
   const int top=210;
   rect(f,414,100,3,390,{80,67,45});rect(f,412,100+first*390/option_count,7,7*390/option_count,{199,179,119});

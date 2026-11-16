@@ -11,7 +11,7 @@ int main(int argc,char**argv)try{
  unsigned files=0,frames=0;std::string line;
  while(std::getline(input,line)){
   const auto tab=line.find('\t');if(tab==line.npos)throw std::runtime_error("invalid hash fixture");
-  const auto path=line.substr(0,tab);const auto bytes=stack.read(path);d2d::dcc::Sprite sprite(bytes);d2d::dcc::Sprite geometry{std::vector<std::byte>(bytes)};
+  const auto path=line.substr(0,tab);const auto bytes=stack.read(path);d2d::dcc::Sprite sprite(bytes);d2d::dcc::Sprite geometry{std::vector<std::byte>(bytes)};geometry.cache_equivalent_directions();
   d2d::dcc::decode_profile.enabled=true;const auto calls_before=d2d::dcc::decode_profile.calls;
   std::uint64_t hash=1469598103934665603ull;const auto add=[&](std::uint8_t v){hash=(hash^v)*1099511628211ull;};
   for(unsigned d=0;d<sprite.directions();++d)for(int f=0;f<sprite.frames_per_direction();++f){const auto&a=sprite.frame(d,f);const auto&b=geometry.metadata(d,f);
