@@ -3,6 +3,7 @@
 #include "audio_ring.h"
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <sys/mman.h>
 #include <sys/wait.h>
