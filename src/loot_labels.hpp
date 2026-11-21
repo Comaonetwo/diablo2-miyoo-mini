@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 namespace d2mini {
 // Temporary coverage in the otherwise opaque world alpha channel: later walls
@@ -25,7 +26,24 @@ public:
   saved_.resize(std::size_t(x1_-x0_)*(y1_-y0_)*4);
   for(int y=y0_;y<y1_;++y)std::copy_n(f.data()+(y*width+x0_)*4,(x1_-x0_)*4,saved_.data()+std::size_t(y-y0_)*(x1_-x0_)*4);
  }
- ~LootLabelComposite(){for(int y=y0_;y<y1_;++y)for(int x=x0_;x<x1_;++x){auto*p=frame_.data()+(y*width_+x)*4;const auto*b=saved_.data()+(std::size_t(y-y0_)*(x1_-x0_)+x-x0_)*4;const int a=b[3]==254?opacity_*(255-fade_)/255:opacity_;for(int c=0;c<3;++c)p[c]=std::uint8_t((int(p[c])*a+int(b[c])*(255-a)+127)/255);p[3]=b[3];}}
+ ~LootLabelComposite() {
+  const int pixels = x1_ - x0_;
+  if (pixels == 0) return;
+  const auto row_bytes = std::size_t(pixels) * 4;
+  const int actor_opacity = opacity_ * (255 - fade_) / 255;
+  for (int y = y0_; y < y1_; ++y) {
+   auto* drawn = frame_.data() + (y * width_ + x0_) * 4;
+   const auto* before = saved_.data() + std::size_t(y - y0_) * row_bytes;
+   if (std::memcmp(drawn, before, row_bytes) == 0) continue;
+   for (int x = 0; x < pixels; ++x, drawn += 4, before += 4) {
+    if (std::memcmp(drawn, before, 4) == 0) continue;
+    const int alpha = before[3] == 254 ? actor_opacity : opacity_;
+    for (int c = 0; c < 3; ++c)
+     drawn[c] = std::uint8_t((drawn[c] * alpha + before[c] * (255 - alpha) + 127) / 255);
+    drawn[3] = before[3];
+   }
+  }
+ }
  static std::vector<std::uint8_t>& scratch(){static std::vector<std::uint8_t> pixels;return pixels;}
 };
 }
