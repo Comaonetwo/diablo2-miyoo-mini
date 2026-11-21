@@ -6,7 +6,14 @@ Miyoo Mini and Mini Plus playtesting, bug reports, small fixes, tests and docume
 
 Check GitHub Issues for an existing report or a linked pull request. Comment on the issue with the scope you intend to take before starting a substantial change. Maintainers can mark it as in progress or point you to work already under way. Link your PR to the issue and update the issue if you hand the work back. This also applies when a coding agent does the work.
 
-A useful first contribution is an Act IV performance report on a physical device. For small code tasks, ask which open issue is available before changing targeting, animations or rendering. Those areas may already have local changes for the next release.
+## First task for a coding agent
+
+Use the [open contribution task](https://github.com/Comaonetwo/diablo2-miyoo-mini/issues/1) as your brief. Pick one opportunity in single-player Acts I–IV and work it through to a focused PR:
+
+- **Performance.** Look for a costly code path or a reproducible slowdown in any act. Measure a baseline, implement a fix and compare the same scene and settings. Preserve gameplay behavior and visual output. For caching changes, report the memory cost. Label desktop and device results separately.
+- **Gameplay.** Find a reproducible bug through testing or code review. Establish the expected behavior from game data or another reliable reference, then fix the cause and run a focused regression check. Describe the trigger and what now works.
+
+Start from current main in a fork and check existing issues and PRs. Coordinate larger changes before implementing them. A local reproduction, check or benchmark can support a PR while physical device testing is pending. State what you tested and what still needs a device.
 
 ## Build and check
 
@@ -16,13 +23,4 @@ Fork the repo, create a branch for your change, and open a PR against the projec
 
 ## Report a bug or performance issue
 
-Include port version, device, Onion version, location, relevant settings, steps, and expected versus observed behavior. For frame drops, describe the room and activity and whether the slowdown is sustained or occurs during a transition. For an Act IV comparison, keep the character, route, world zoom, lighting and camera mode consistent. Attach a short clip or relevant lines from `diablo2.log` if they help. Remove personal information and avoid posting saves publicly unless they are purpose-built test saves.
-
-## Current test priorities
-
-| Area | Suggested contribution | Coordination |
-| --- | --- | --- |
-| Act IV frame drops | Record repeatable routes and device settings, ideally with the matching log excerpt | Open for independent playtesting |
-| Act II packs and interiors | Report an exact spawn or room where frame pacing drops | Open for independent playtesting |
-| Door and nearby NPC selection | Check both choices from several approach directions and note whether manual cursor interaction works | Maintainer has a candidate fix. Coordinate before editing |
-| Animation glitches | File the class or monster, equipment, area and a short clip where possible | Open for reproduction. Coordinate before editing shared animation code |
+Include port version, device, Onion version, location, relevant settings, steps, and expected versus observed behavior. For frame drops, describe the room and activity and whether the slowdown is sustained or occurs during a transition. For a performance comparison, keep the character, route, world zoom, lighting and camera mode consistent. Attach a short clip or relevant lines from `diablo2.log` if they help. Remove personal information and avoid posting saves publicly unless they are purpose-built test saves.
