@@ -98,3 +98,7 @@ Code is GPL-3.0-or-later with dependency notices retained. Releases include comp
 The optional Ports thumbnail is Diablo II promotional box artwork and is **excluded from the code license**; see [its separate notice](assets/ports/ARTWORK-NOTICE.txt). Game artwork and trademarks remain with their owners. The animated menu logo is read from the user's MPQs; no static logo bitmap is embedded in this build. No endorsement or additional commercial-art license is claimed.
 
 Based on the pinned `psi29a/d2decomped` engine with substantial handheld/gameplay work. Exact dependency revisions are recorded in `dependencies.json`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for playtesting, reporting bugs and submitting fixes.

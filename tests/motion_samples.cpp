@@ -20,8 +20,8 @@ int main(){
  m.begin(&level);for(int i=0;i<10000;++i)m.add(M::key(M::Monster,i),0,0);m.finish();assert(m.size()==M::kMaxSamples&&m.bytes()<=65536);
  d2mini::RoofCutout hole{100,100,d2mini::RoofCutout::kRadius};
  assert(hole.alpha(100,100,255)==16&&hole.alpha(160,100,255)==16);
- int last=16;for(int x=100;x<=220;++x){const int v=hole.alpha(x,100,255);assert(v>=last&&v<=255);last=v;}
- assert(hole.alpha(210,100,255)==255&&hole.alpha(100,100,8)==8);
+ int last=16;for(int x=100;x<=100+hole.radius;++x){const int v=hole.alpha(x,100,255);assert(v>=last&&v<=255);last=v;}
+ assert(hole.alpha(100+hole.radius,100,255)==255&&hole.alpha(100,100,8)==8);
  d2mini::ColoredLights colors;for(int i=0;i<1000;++i)colors.add(32,32,24,{255,50,0});assert(colors.count==1);
  std::vector<std::uint8_t> pixels(64*64*4,40);colors.apply(pixels,64,64);const auto mid=(32*64+32)*4;assert(pixels[mid]>pixels[mid+2]&&pixels[mid+3]==40);assert(pixels[0]==40);
  std::puts("PASS render-only interpolation: identities, newborns, teleport/level reset, blend bounds, multi-tick history and bounded storage; broader near-clear roof fade");

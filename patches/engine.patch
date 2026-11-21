@@ -12,7 +12,7 @@ index d00fd24..b20831c 100644
  target_include_directories(d2d PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
  target_compile_definitions(d2d PRIVATE D2D_WITH_SENTRY "D2D_APP_VERSION=\"${D2D_VERSION}\"")
 diff --git a/apps/d2d/audio.hpp b/apps/d2d/audio.hpp
-index caa4f15..f0cbde9 100644
+index caa4f15..790542d 100644
 --- a/apps/d2d/audio.hpp
 +++ b/apps/d2d/audio.hpp
 @@ -4,6 +4,11 @@
@@ -359,15 +359,51 @@ index caa4f15..f0cbde9 100644
          music.sound = id;                        // pending until the job lands
          music_job_sound = id;
          music_job_gain = gain;
-@@ -235,6 +411,7 @@ struct Audio {
+@@ -235,18 +411,36 @@ struct Audio {
          }
      }
      void crossfade_music(const GameData& game_data, int index) {
-+        if(loopback){play_music(game_data,index);return;}
-         auto fade_of = [&](int sound, bool fading_in) {
-             if (sound <= 0 || std::size_t(sound) >= game_data.sounds.size()) return std::uint64_t(0);
-             return std::uint64_t(fading_in ? game_data.sounds[std::size_t(sound)].fade_in : game_data.sounds[std::size_t(sound)].fade_out) * kTickMs;
-@@ -265,8 +442,8 @@ struct Audio {
+-        auto fade_of = [&](int sound, bool fading_in) {
+-            if (sound <= 0 || std::size_t(sound) >= game_data.sounds.size()) return std::uint64_t(0);
+-            return std::uint64_t(fading_in ? game_data.sounds[std::size_t(sound)].fade_in : game_data.sounds[std::size_t(sound)].fade_out) * kTickMs;
+-        };
++        constexpr auto fade_ms = 1000;
++        if(loopback){
++            std::lock_guard lock(music_mutex);
++            if (music.sound == index) {
++                if (music.fade_t1 && music.fade_to == 0.f)
++                    fade(music, float(std::clamp(game_data.sounds[std::size_t(index)].volume, 0, 255)) / 255.f, fade_ms);
++                return;
++            }
++            // Keep just one stream. Finish fading the current source before
++            // opening the next MPQ member and filling its four PCM buffers.
++            if (music.src && music.gain > 0.f) {
++                if (!music.fade_t1 || music.fade_to != 0.f) fade(music, 0.f, fade_ms);
++                return;
++            }
++            play_music(game_data,index);
++            if (music.src) {
++                const float target_gain = music.gain;
++                set_gain(music, 0.f);
++                fade(music, target_gain, fade_ms);
++            }
++            return;
++        }
++        if (music.sound == index) return;
+         stop(music_old);
+         if (music.src) {
+-            const auto out = fade_of(music.sound, false);
+             music_old = music;
+             music = {};
+-            fade(music_old, 0.f, out);
++            fade(music_old, 0.f, fade_ms);
+         }
+-        music_fade_in_ms = fade_of(index, true);
++        music_fade_in_ms = fade_ms;
+         play_music(game_data, index);
+     }
+     // Where each song picks up (FUN_004dcaa0): every 125 sound ticks (5 s)
+@@ -265,8 +459,8 @@ struct Audio {
      }
      // A fixed-path UI sound (game.exe names these directly, not via
      // Sounds.txt); the file is cached, each play restarts the channel.
@@ -378,7 +414,7 @@ index caa4f15..f0cbde9 100644
          auto found = file_cache.find(path);
          if (found == file_cache.end()) {
              auto bytes = game_data.mpqs.try_read(path);
-@@ -274,6 +451,9 @@ struct Audio {
+@@ -274,6 +468,9 @@ struct Audio {
              found = file_cache.emplace(path, std::move(*bytes)).first;
          }
          start(channel, found->second, 1.f, false, -1);
@@ -388,7 +424,7 @@ index caa4f15..f0cbde9 100644
      }
      // Cinematic audio: a streaming source fed 4096-frame S16 stereo chunks.
      ALuint vsrc = 0;
-@@ -316,6 +496,8 @@ struct Audio {
+@@ -316,6 +513,8 @@ struct Audio {
  
      // Land a finished music job; free one-shots that have played out.
      void update() {
@@ -397,7 +433,7 @@ index caa4f15..f0cbde9 100644
          std::erase_if(music_dropped, [](const auto& dropped) { return dropped.wait_for(std::chrono::seconds(0)) == std::future_status::ready; });
          if (music_job.valid() && music_job.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
              auto decoded = music_job.get();
-@@ -347,7 +529,17 @@ struct Audio {
+@@ -347,7 +546,17 @@ struct Audio {
              if (channel == &music_old) stop(music_old);
              if (channel == &ambience_old) stop(ambience_old);
          }
@@ -1570,14 +1606,15 @@ index 4f10b48..1adf222 100644
  };
  
 diff --git a/apps/d2d/ingame.cpp b/apps/d2d/ingame.cpp
-index 506d86f..7f82476 100644
+index 506d86f..cf75b30 100644
 --- a/apps/d2d/ingame.cpp
 +++ b/apps/d2d/ingame.cpp
-@@ -1,14 +1,18 @@
+@@ -1,14 +1,19 @@
  // SPDX-License-Identifier: GPL-3.0-or-later
  // Definitions for ingame.hpp: the in-game frame and the rain.
  #include "ingame.hpp"
 +#include "colored_lights.hpp"
++#include "frame_pixels.hpp"
  
  #include "common.hpp"
 +#include "compact_hud.hpp"
@@ -1592,7 +1629,7 @@ index 506d86f..7f82476 100644
  
  #include <d2s_items.hpp>
  #include <rules.hpp>
-@@ -19,6 +23,7 @@
+@@ -19,6 +24,7 @@
  #include <cmath>
  #include <cstddef>
  #include <cstdint>
@@ -1600,7 +1637,7 @@ index 506d86f..7f82476 100644
  #include <cstdlib>
  #include <functional>
  #include <optional>
-@@ -85,14 +90,17 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+@@ -85,14 +91,17 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
                     const Unit* player_look ,     // its states' colour shift and overlays
                     bool show_items,               // Alt held: every ground item's name
                     const Hud& hud,
@@ -1620,7 +1657,7 @@ index 506d86f..7f82476 100644
      // Prefer the real tile-composited world when townE1.ds1 loaded; fall
      // back to the credits DC6 placeholder when it didn't (headless CI, a
      // stripped MPQ dir, etc.). Palette follows the render path: ACT1 for
-@@ -101,8 +109,8 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+@@ -101,8 +110,8 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
          set_phase(MainPhase::IngameClear);
          // Clear to black — tiles don't cover every subtile so an
          // uninitialized fb would leak the previous frame's contents.
@@ -1631,7 +1668,7 @@ index 506d86f..7f82476 100644
          set_phase(MainPhase::IngameFloor);   // render_world does floor+shadow+walls internally
          // Player: the camera follows them, so their feet sit on the camera
          // point (kW/2, kViewY); render_world slots them into the
-@@ -114,6 +122,7 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+@@ -114,6 +123,7 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
              units.push_back({ cam_x, cam_y, &scene.composite(kUiToSaveClass[class_idx], player_mode, gfx),
                                player_dir, nullptr, player_mode_ms });
          if (!units.empty()) {
@@ -1639,7 +1676,7 @@ index 506d86f..7f82476 100644
              units.back().rate = player_rate;
              units.back().overlay_class = 1;                 // FUN_006223a0: a player's Height2
              if (player_look) { units.back().shift = player_look->shift; units.back().overs = player_look->overs; }
-@@ -131,7 +140,7 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+@@ -131,7 +141,7 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
              const UnitState* state = i < npcs.size() ? &npcs[i] : nullptr;
              if (state && state->hidden) continue;
              const float x = state ? state->x : npc.x, y = state ? state->y : npc.y;
@@ -1648,7 +1685,7 @@ index 506d86f..7f82476 100644
              const auto& anim = scene.npc_anim(npc, state && state->walking ? std::string_view("WL") : state && !state->mode.empty() ? state->mode : std::string_view(npc.mode));
              static const std::string none;
              // An object in a new mode keeps its name where it's Selectable in it (an open door).
-@@ -141,6 +150,8 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+@@ -141,6 +151,8 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
              if (state) units.back().says = state->says;
              units.back().shadow = npc.root != "objects";
              units.back().hold = holds(npc, state);
@@ -1657,7 +1694,7 @@ index 506d86f..7f82476 100644
          }
          // The neighbour levels' objects and NPCs (torches by the camp's
          // gate, Flavie, patrolling rogues), where they are now: D2 draws the
-@@ -155,24 +166,48 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+@@ -155,24 +167,48 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
                  ++next_state;
                  if (npc.quest || (state && state->hidden)) continue;
                  const float x = (state ? state->x : npc.x) + float(neighbour.dx), y = (state ? state->y : npc.y) + float(neighbour.dy);
@@ -1708,7 +1745,7 @@ index 506d86f..7f82476 100644
          // What a unit says (a shrine's message), centred over it.
          // ponytail: game.exe's overhead chat draw (Chat.cpp) isn't traced:
          // font, colour and height (here 100 px over its feet) are guesses.
-@@ -182,22 +217,26 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+@@ -182,22 +218,28 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
              const int pixel_x = world_w / 2 + int(std::lround(((unit.x - cam_x) - (unit.y - cam_y)) * (kIsoW / 2)));
              const int pixel_y = kViewY + int(std::lround(((unit.x - cam_x) + (unit.y - cam_y)) * (kIsoH / 2)));
              const auto& pal = scene.act_pal.entries().empty() ? scene.pal : scene.act_pal;
@@ -1721,8 +1758,10 @@ index 506d86f..7f82476 100644
          // ponytail: game.exe's label layout isn't traced (box padding, the
          // stacking order, the hovered label's own colour).
 -        if (show_items) {
++        const int ground_scale = std::min(d2d::font::g_text_scale,scene.use_readable()?(world_zoom==2?68:world_zoom?90:110):(world_zoom==2?94:world_zoom?125:150));
 +        if (show_items||g_loot_near) {
-+            const d2d::font::TextScaleScope ground_text(std::min(d2d::font::g_text_scale,scene.use_readable()?(world_zoom==2?68:world_zoom?90:110):(world_zoom==2?94:world_zoom?125:150)));
++            const d2d::font::TextScaleScope ground_text(ground_scale);
++
              const auto& pal = scene.act_pal.entries().empty() ? scene.pal : scene.act_pal;
              std::ranges::sort(items, {}, [](const auto& entry) { return -entry.second[3]; });   // nearest the bottom first
              std::vector<std::array<int, 4>> placed;
@@ -1739,7 +1778,7 @@ index 506d86f..7f82476 100644
                  rect[2] = rect[0] + width; rect[3] = rect[1] + line_height + 2;
                  for (bool moved = true; moved;) {
                      moved = false;
-@@ -205,13 +244,16 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+@@ -205,13 +247,16 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
                          if (rect[0] < placed_rect[2] && placed_rect[0] < rect[2] && rect[1] < placed_rect[3] && placed_rect[1] < rect[3]) { const int dy = rect[3] - placed_rect[1]; rect[1] -= dy; rect[3] -= dy; moved = true; }
                  }
                  placed.push_back(rect);
@@ -1759,7 +1798,12 @@ index 506d86f..7f82476 100644
                      if (hovered_npc) *hovered_npc = unit->npc;
                      hovered = { nullptr, {} };              // the label names it: no second name
                  }
-@@ -223,15 +265,22 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+@@ -219,19 +264,27 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+         }
+         // Name over whatever the cursor points at, centred above it.
+         if (hovered.first && (hovered.first->npc > -10 || hovered.first->npc <= -1000)) {   // monsters: their bar at the top
++            const d2d::font::TextScaleScope hover_scale(hovered.first->sprite ? ground_scale : d2d::font::g_text_scale);
+             const auto& hovered_name = *hovered.first->name;
              const auto& box  = hovered.second;
              const auto& colour  = hovered.first->rgb;
              const auto& pal = scene.act_pal.entries().empty() ? scene.pal : scene.act_pal;
@@ -1771,7 +1815,7 @@ index 506d86f..7f82476 100644
 +            font.draw_tinted(world,std::uint32_t(world_w),kScreenHeight,pal,x,y,hovered_name,colour[0],colour[1],colour[2]);
          }
 +        } // gameplay label scale
-+        if(g_loot_fade_amount>0)for(std::size_t i=3;i<world.size();i+=4)world[i]=255;
++        if (g_loot_fade_amount > 0) d2mini::restore_opaque_alpha(world);
          if (wide)
              for (std::size_t y = 0; y < kScreenHeight; ++y)
                  std::copy_n(world.begin() + std::ptrdiff_t((y * std::size_t(world_w) + std::size_t(off)) * 4), kScreenWidth * 4,
@@ -1784,7 +1828,7 @@ index 506d86f..7f82476 100644
          if (inventory && hud_stats && class_idx >= 0 && class_idx < 7) wearer_value = d2d::game::wearer(scene, kUiToSaveClass[class_idx], *inventory, *hud_stats);
          const d2d::rules::Wearer* hover_wearer = wearer_value ? &*wearer_value : nullptr;
          if (inventory && class_idx >= 0 && class_idx < 7)
-@@ -260,12 +309,12 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
+@@ -260,12 +313,12 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
              else
                  draw_storage(framebuffer, scene, *stash, scene.stash_panel[std::size_t(expansion_index)], scene.stash_layout[std::size_t(expansion_index)], d2d::d2s::item_panel::kStash,
                               mouse_x, mouse_y, hover_wearer);
@@ -4483,7 +4527,7 @@ index a1c88ed..185e9a1 100644
  
  }  // namespace d2d::client
 diff --git a/apps/d2d/town.cpp b/apps/d2d/town.cpp
-index 59369b9..1d3ce56 100644
+index 59369b9..cd62396 100644
 --- a/apps/d2d/town.cpp
 +++ b/apps/d2d/town.cpp
 @@ -2,9 +2,16 @@
@@ -4623,7 +4667,7 @@ index 59369b9..1d3ce56 100644
          out.push_back(unit);
      };
      for (const auto& shot_state : view.missiles) shot(shot_state);
-@@ -152,6 +195,12 @@ void view_units(const Scene& scene, const View& view, float camera_x, float came
+@@ -152,6 +195,15 @@ void view_units(const Scene& scene, const View& view, float camera_x, float came
          const auto mpf = anim.ms_per_frame();
          out.push_back({ monster.unit.x, monster.unit.y, &anim, monster.unit.dir, monster.targetable() ? &monster.npc.name : nullptr,
                          row ? now_ms - mpf * std::uint32_t(monster.seq_frame) - mpf / 2 : down && monster.mode != "S1" ? 0u : monster.unit.mode_ms, -10 - int(i) });
@@ -4632,11 +4676,14 @@ index 59369b9..1d3ce56 100644
 +            const auto frames=std::max<unsigned>(anim.cof.frames_per_direction(),1);
 +            out.back().mode_ms=now_ms-(frames-1)*mpf;out.back().hold=true;
 +        }
++        // A non-looping death pose must hold its last frame if it outlives
++        // the art's frame count, e.g. on a delayed DT-to-DD transition.
++        if (monster.mode == "DT") out.back().hold = true;
 +        out.back().protect_loot=monster.alive();
          out.back().reverse = down;
          out.back().overlay_class = monster.npc.overlay_class;
          out.back().cmap = scene.monster_map(monster.npc);
-@@ -216,7 +265,7 @@ Lighting frame_light(const Scene& scene, const View& view, float cam_x, float ca
+@@ -216,7 +268,7 @@ Lighting frame_light(const Scene& scene, const View& view, float cam_x, float ca
      const int half = (g_view_width / 2 / (kIsoW / 2) + (int(kScreenHeight) / 2 + kIsoH) / (kIsoH / 2)) * 5 / 2 + 18 + 1;
      if (ambient < 0) ambient = view.level->light >= 0 ? view.level->light : view.day.intensity();
      lighting.grid.reset(int(cam_x * 5), int(cam_y * 5), ambient, half * 2);
@@ -4645,7 +4692,7 @@ index 59369b9..1d3ce56 100644
          for (int i = 0; i < lighting.grid.grid_size; ++i)
              lighting.grid.blocked[std::size_t(j * lighting.grid.grid_size + i)] =
                  view.level->blocked((float(lighting.grid.origin_x + i) + 0.5f) / 5, (float(lighting.grid.origin_y + j) + 0.5f) / 5, 0x22);
-@@ -237,7 +286,10 @@ Lighting frame_light(const Scene& scene, const View& view, float cam_x, float ca
+@@ -237,7 +289,10 @@ Lighting frame_light(const Scene& scene, const View& view, float cam_x, float ca
      };
      auto stamp8 = [&](float x, float y, int radius8, bool shadowed) {
          if (radius8 <= 0) return;
@@ -4657,7 +4704,7 @@ index 59369b9..1d3ce56 100644
          else lighting.grid.stamp(int(x * 40), int(y * 40), radius8, 255);
      };
      auto stamp = [&](float x, float y, int radius, bool shadowed) { stamp8(x, y, std::min(radius, 18) * 8, shadowed); };
-@@ -281,6 +333,27 @@ Lighting frame_light(const Scene& scene, const View& view, float cam_x, float ca
+@@ -281,6 +336,27 @@ Lighting frame_light(const Scene& scene, const View& view, float cam_x, float ca
  }
  
  // Town
@@ -4685,7 +4732,7 @@ index 59369b9..1d3ce56 100644
  auto Town::publish() -> void {
          auto out = world.view();
          out.sounds = std::move(world.cues.due);
-@@ -299,14 +372,14 @@ auto Town::publish() -> void {
+@@ -299,14 +375,14 @@ auto Town::publish() -> void {
          if (net_game) net_overlay();
          cues.due.insert(cues.due.end(), view.sounds.begin(), view.sounds.end());
          if (!view.has_character) return;
@@ -4703,7 +4750,7 @@ index 59369b9..1d3ce56 100644
          character.panel.attack = view.attack_lines;
          // A quest's log state sent (S->C 0x5d, FUN_004a2cb0): the Quest Log
          // button, or the open log picks it.
-@@ -334,6 +407,9 @@ auto Town::publish() -> void {
+@@ -334,6 +410,9 @@ auto Town::publish() -> void {
  static std::filesystem::path automap_dir(const World& world) { return world.characters ? world.characters->dir : std::filesystem::path{}; }
  
  auto Town::enter() -> void {
@@ -4713,7 +4760,7 @@ index 59369b9..1d3ce56 100644
          automap.cells.clear();                    // a new game: what the files beside the save kept
          automap.placed.clear();
          automap.revealed.clear();
-@@ -342,8 +418,8 @@ auto Town::enter() -> void {
+@@ -342,8 +421,8 @@ auto Town::enter() -> void {
          mini = {};                                // open (FUN_004567f0; ponytail: not the "Mini Panel" registry value)
          game_menu.open = false;
          world.enter(character);
@@ -4723,7 +4770,7 @@ index 59369b9..1d3ce56 100644
          if (scene && level) load_automap(automap, automap_dir(world), character.name, scene->map_seed, level->layer);
      }
  
-@@ -351,6 +427,7 @@ auto Town::enter() -> void {
+@@ -351,6 +430,7 @@ auto Town::enter() -> void {
  // (FUN_0045a5c0).
  auto Town::save() -> std::string {
          if (scene && level) save_automap(automap, automap_dir(world), character.name, scene->map_seed, level->layer);
@@ -4731,7 +4778,7 @@ index 59369b9..1d3ce56 100644
          return world.save();
      }
  
-@@ -367,7 +444,11 @@ auto Town::operate(int npc_index, std::uint32_t frame_ms, int force ) -> void {
+@@ -367,7 +447,11 @@ auto Town::operate(int npc_index, std::uint32_t frame_ms, int force ) -> void {
  // ponytail: NPC talk and trade stay local (the host's gold and items don't
  // follow); belt, item moves, stat and skill points aren't sent (M9).
  auto Town::send(const Command& command) -> void {
@@ -4744,7 +4791,7 @@ index 59369b9..1d3ce56 100644
          auto subtile_x = [&](float cell_x) { return (cell_x + float(level->world_x)) * 5.f; };
          auto subtile_y = [&](float cell_y) { return (cell_y + float(level->world_y)) * 5.f; };
          if (const auto* move = std::get_if<cmd::Move>(&command)) {
-@@ -772,8 +853,10 @@ auto Town::open_game_menu() -> void {
+@@ -772,8 +856,10 @@ auto Town::open_game_menu() -> void {
          game_menu.restore_automap = automap.open;
          game_menu.restore_mini = mini.open;
          automap.open = mini.open = belt_open = false;
@@ -4756,7 +4803,7 @@ index 59369b9..1d3ce56 100644
          game_menu.open = true;
          game_menu.show(0);
      }
-@@ -787,7 +870,22 @@ auto Town::close_game_menu() -> void {
+@@ -787,7 +873,22 @@ auto Town::close_game_menu() -> void {
  auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mouse, const std::vector<SDL_Keycode>& keys_this_frame,
                  Screen& screen, Audio& audio, std::uint32_t frame_ms, std::uint32_t last_ms) -> void {
          now_ms = frame_ms;
@@ -4780,7 +4827,7 @@ index 59369b9..1d3ce56 100644
          // ESC handled globally in handle_sdl_events (returns to Title).
          // D2 movement: press or hold the left button on the ground
          // and the character walks toward that point (the target
-@@ -821,23 +919,50 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -821,23 +922,50 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
          for (const auto key : keys_this_frame) {
              if ((trade_gold_typing || chat_typing) && key != SDLK_ESCAPE) continue;   // typing: no hotkeys
              if (game_menu.open && key != SDLK_ESCAPE) continue;   // the menu's input table (FUN_00467a70) has the keys
@@ -4836,7 +4883,7 @@ index 59369b9..1d3ce56 100644
                  else if (trade_gold_typing) trade_gold_typing.reset();        // then the gold being typed
                  else if (net_game && net_game->trade.state != 0) { if (net_game->trade.state == 2) net_game->trade_answer(false); else net_game->trade_cancel(); }
                  else if (waypoint.open) waypoint = {};
-@@ -845,8 +970,8 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -845,8 +973,8 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                  else if (speech.npc >= 0) { speech = {}; menu_after_speech = -1; }   // then speech
                  else if (npc_menu.npc >= 0) npc_menu = {};          // then the menu
                  else if (game_menu.open) close_game_menu();
@@ -4847,7 +4894,7 @@ index 59369b9..1d3ce56 100644
                  else open_game_menu();
              }
          }
-@@ -862,14 +987,18 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -862,14 +990,18 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                  d2d::userdir::save_cfg(cfg_file, { { "master_volume", std::to_string(audio.master_volume) },
                                                     { "music_volume", std::to_string(audio.music_volume) } });
              game_menu.volume_changed = false;
@@ -4868,7 +4915,7 @@ index 59369b9..1d3ce56 100644
              if (action == MiniPanel::kCharacter) { char_open = !char_open; if (char_open) stash_open = cube_open = quest_log.open = false; }
              if (action == MiniPanel::kInventory) { inv_open = !inv_open; if (inv_open) tree_open = false; }
              if (action == MiniPanel::kSkills) { tree_open = !tree_open; if (tree_open) inv_open = false; }
-@@ -929,13 +1058,14 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -929,13 +1061,14 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                  mouse.press_this_frame = mouse.release_this_frame = mouse.rpress_this_frame = false;
              }
          }
@@ -4884,7 +4931,7 @@ index 59369b9..1d3ce56 100644
                         && mouse.y >= kCharPanelY && mouse.y < kCharPanelY + 432);
          // The belt: its HUD strip (row 1's boxes) toggles the popup;
          // strip and open popup take the click instead of the world.
-@@ -951,6 +1081,16 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -951,6 +1084,16 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
          // menu or speech up). Held over the store's stock, a click
          // sells the item.
          bool item_click = false;
@@ -4901,7 +4948,7 @@ index 59369b9..1d3ce56 100644
          // With an identify scroll picked, a click names the item for it and ends the pick.
          if (identify_with >= 0 && mouse.press_this_frame) {
              const auto click = item_cursor_command(*scene, character.items, held, std::max(character.character_class, 0),
-@@ -1080,7 +1220,7 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -1080,7 +1223,7 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                  const auto rect = grid_rect(*scene, in_inv ? lay : scene->stash_layout[character.expansion ? 1 : 0], item);
                  if (mouse.x >= rect[0] && mouse.x < rect[0] + rect[2] && mouse.y >= rect[1] && mouse.y < rect[1] + rect[3]) {
                      if (net_game) send(cmd::UseItem{ item.id });  // the host opens it (0x20 -> 0x77 0x15)
@@ -4910,7 +4957,7 @@ index 59369b9..1d3ce56 100644
                  }
              }
          // The Cube's Transmute (FUN_0048a190): held on a press over it, sent
-@@ -1107,7 +1247,9 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -1107,7 +1250,9 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                  automap_reveal(*scene, *neighbour.level, automap, unit.x - float(neighbour.dx), unit.y - float(neighbour.dy));
          // The NPC's voice (FUN_004a10e0 plays FUN_004e0650's sound for
          // the speech string) follows the speech box.
@@ -4921,7 +4968,7 @@ index 59369b9..1d3ce56 100644
          // The level's SoundEnviron (Levels.txt SoundEnv -> Song, Day / Night
          // Ambience, Day / Night Event). Day is the day's phases 1..3
          // (FUN_004e42e0 via FUN_0061c220), 0° to 180°; else night.
-@@ -1115,7 +1257,6 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -1115,21 +1260,20 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
          const int amb = day ? level->ambience : level->night_ambience;
          if (audio.music.sound == 0) {
              audio.play_music(*scene, level->song);
@@ -4929,9 +4976,11 @@ index 59369b9..1d3ce56 100644
              if (audio.music.sound == 0) audio.music.sound = -1;   // don't retry every frame
          }
          // Another level's song: game.exe (FUN_004dcaa0) switches 75 sound
-@@ -1124,12 +1265,12 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+         // ticks (3 s) into the new level, so skirting an edge doesn't flip
+         // it, and cross-fades (Audio::crossfade_music). Its ambience then,
          // and at dusk and dawn.
-         if (audio.music.sound > 0 && level->song > 0 && audio.music.sound != level->song && frame_ms - level_ms >= 75 * 40)
+-        if (audio.music.sound > 0 && level->song > 0 && audio.music.sound != level->song && frame_ms - level_ms >= 75 * 40)
++        if (audio.music.sound > 0 && level->song > 0 && (audio.music.sound != level->song || audio.music.fade_t1) && frame_ms - level_ms >= 75 * 40)
              audio.crossfade_music(*scene, level->song);
 -        if (audio.music.sound > 0 && audio.music.sound == level->song && audio.ambience.sound != amb) {
 +        if (audio.ambience_requested != amb) {
@@ -4944,7 +4993,7 @@ index 59369b9..1d3ce56 100644
          }
          // The weather, a client frame at a time where it rains (FUN_00473f50;
          // leaving, the drops go and the cycle waits), and its sound: Sounds.txt
-@@ -1173,13 +1314,13 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -1173,13 +1317,13 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
          if (questdone_sound) { questdone_sound = false; audio.play_sfx(*scene, d2d::rules::sound_ids::kCursorQuestDone, 1.f, 0); }
          if (replay_speech) {
              const auto found = std::ranges::find_if(kSpeechSound, [&](const auto& entry) { return entry.first == replay_speech; });
@@ -4960,7 +5009,7 @@ index 59369b9..1d3ce56 100644
          }
          if (speech.npc >= 0 && (speech.done(frame_ms) || mouse.press_this_frame)) {
              menu_click = mouse.press_this_frame;          // a click skips the speech
-@@ -1188,7 +1329,7 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -1188,7 +1332,7 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
              menu_after_speech = -1;
          } else if (npc_menu.npc >= 0 && npc_menu.scroll_max > 0 && mouse.wheel != 0) {   // the hire list scrolls
              npc_menu = open_hire_menu(*scene, npc_menu.npc, hire_offers, character.stats.get(d2d::d2s::kGold) + character.stats.get(d2d::d2s::kGoldBank),
@@ -4969,7 +5018,7 @@ index 59369b9..1d3ce56 100644
          } else if (npc_menu.npc >= 0 && mouse.press_this_frame) {
              menu_click = true;                            // the click is the menu's, not a walk
              const int line_index = npc_menu.line_at(mouse.x, mouse.y);
-@@ -1279,7 +1420,7 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -1279,7 +1423,7 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
              const int store_index = store.npc >= 0 ? store_item_at(*scene, store, mouse.x, mouse.y) : -1;
              if (store_index >= 0 && (mouse.rpress_this_frame || (mouse.press_this_frame && store.mode == 1)))
              {
@@ -4978,7 +5027,7 @@ index 59369b9..1d3ce56 100644
              }
              // Sell: an inventory item; repair: that or a worn one.
              if (store.npc >= 0 && mouse.press_this_frame && (store.mode == 2 || store.mode == 3))
-@@ -1314,8 +1455,8 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -1314,8 +1458,8 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
          // (Sounds.txt 4, FUN_004a66e0 / FUN_004a6790); let go over it and it
          // opens the character panel / tree (FUN_004a6840 / FUN_004a6920).
          const auto shown = level_buttons_now();
@@ -4989,7 +5038,7 @@ index 59369b9..1d3ce56 100644
          if (shown.stats_x < 0) stats_down = false;          // hidden lets go (FUN_004a6b30)
          if (shown.skills_x < 0) skills_down = false;
          const bool level_click = mouse.press_this_frame && (on_stats || on_skills);
-@@ -1327,7 +1468,7 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -1327,7 +1471,7 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
          }
          // The run button: the same press and click (FUN_00499500); let go
          // over it and run toggles, as R does (FUN_004996a0).
@@ -4998,7 +5047,7 @@ index 59369b9..1d3ce56 100644
          const bool run_click = mouse.press_this_frame && on_run;
          if (run_click) { run_down = true; audio.play_sfx(*scene, d2d::rules::sound_ids::kCursorButtonClick, 1.f, 0); }
          if (mouse.release_this_frame) {
-@@ -1335,18 +1476,28 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
+@@ -1335,18 +1479,28 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
              run_down = false;
          }
          // Holding an item, a click on the world drops it (C→S 0x17).
@@ -5028,7 +5077,7 @@ index 59369b9..1d3ce56 100644
          draw(framebuffer, mouse, frame_ms);
      }
  
-@@ -1361,16 +1512,19 @@ auto Town::view_act() const -> int { return view.level ? d2d::rules::level_ids::
+@@ -1361,16 +1515,19 @@ auto Town::view_act() const -> int { return view.level ? d2d::rules::level_ids::
  auto Town::toggle_quest_log() -> void {
          if (quest_log.open) { quest_log.open = false; return; }
          quest_log_open(quest_log, quest_bits(), quest_state(), view_act());
@@ -5051,7 +5100,7 @@ index 59369b9..1d3ce56 100644
          auto out = level_buttons(character.stats, left_open, inv_open || tree_open, char_open, tree_open, store.npc >= 0);
          out.stats_down = stats_down;
          out.skills_down = skills_down;
-@@ -1394,8 +1548,8 @@ auto Town::input(const Mouse& mouse, bool over_ui) const -> std::vector<Command>
+@@ -1394,8 +1551,8 @@ auto Town::input(const Mouse& mouse, bool over_ui) const -> std::vector<Command>
          if (over_ui) return out;
          // Screen -> world: invert the iso projection around the player,
          // who sits at (kW/2, kViewY).
@@ -5062,7 +5111,7 @@ index 59369b9..1d3ce56 100644
          const float world_x = cam_x + (iso_u + iso_v) / 2, world_y = cam_y + (iso_v - iso_u) / 2;
          const int hovered_monster_index = hovered_monster();
          const bool live = hovered_monster_index >= 0 && view.monsters[std::size_t(hovered_monster_index)].alive();
-@@ -1416,8 +1570,13 @@ auto Town::input(const Mouse& mouse, bool over_ui) const -> std::vector<Command>
+@@ -1416,8 +1573,13 @@ auto Town::input(const Mouse& mouse, bool over_ui) const -> std::vector<Command>
          return out;
      }
  
@@ -5077,7 +5126,7 @@ index 59369b9..1d3ce56 100644
              && !game_menu.open && npc_menu.npc < 0 && speech.npc < 0 && store.npc < 0 && !held && identify_with < 0
              && !skillbar.picking && !chat_typing && !trade_gold_typing && !(net_game && net_game->trade.state != 0);
      }
-@@ -1430,26 +1589,98 @@ auto Town::pad_act() -> void {
+@@ -1430,26 +1592,110 @@ auto Town::pad_act() -> void {
              const auto face = pad::world_step(pad_move.x, pad_move.y, kIsoW, kIsoH, 1.f);
              pad_face_x = face.x; pad_face_y = face.y;
          }
@@ -5132,7 +5181,9 @@ index 59369b9..1d3ce56 100644
 +                if(level)for(std::size_t i=0;i<level->npcs.size();++i){
 +                    const auto& npc=level->npcs[i];
 +                    const UnitState* state=i<view.npc_states.size()?&view.npc_states[i]:nullptr;
-+                    if(!transition_object(npc)||npc.operate_fn==d2d::rules::operate_fn::kSewerStairs
++                    const bool closed_door = npc.root == "objects" && World::is_door(npc.operate_fn)
++                        && (state && !state->mode.empty() ? state->mode : std::string_view(npc.mode)) == "NU";
++                    if((!transition_object(npc)&&!closed_door)||npc.operate_fn==d2d::rules::operate_fn::kSewerStairs
 +                        ||npc.operate_fn==47||npc.operate_fn==50||npc.name.empty()||(state&&state->hidden))continue;
 +                    if(state&&!state->mode.empty()&&!(npc.selectable>>game::mode_index(state->mode)&1))continue;
 +                    transition_objects.push_back({int(i),state?state->x:npc.x,state?state->y:npc.y});
@@ -5155,11 +5206,15 @@ index 59369b9..1d3ce56 100644
 +            // Operable containers/objects win over loose items, including on Y.
 +            // Respect current animation selectability: opened chests must not
 +            // monopolize selection and make their own drops inaccessible.
-+            std::vector<pad::Candidate> objects,doors;
++            std::vector<pad::Candidate> objects, doors, people;
 +            if(level)for(std::size_t i=0;i<level->npcs.size();++i){
 +                const auto& npc=level->npcs[i];
 +                const UnitState* state=i<view.npc_states.size()?&view.npc_states[i]:nullptr;
-+                if(npc.root!="objects"||transition_object(npc)||npc.name.empty()||(state&&state->hidden))continue;
++                if(transition_object(npc)||npc.name.empty()||(state&&state->hidden))continue;
++                if(npc.root!="objects"){
++                    people.push_back({int(i),state?state->x:npc.x,state?state->y:npc.y});
++                    continue;
++                }
 +                if(state&&!state->mode.empty()&&!(npc.selectable>>game::mode_index(state->mode)&1))continue;
 +                const pad::Candidate candidate{int(i),state?state->x:npc.x,state?state->y:npc.y};
 +                if(World::is_door(npc.operate_fn)){
@@ -5167,8 +5222,14 @@ index 59369b9..1d3ce56 100644
 +                    if(mode=="NU"||mode.empty())doors.push_back(candidate);
 +                }else objects.push_back(candidate);
 +            }
-+            if(const int pick=pad::pick_target(hero_x,hero_y,pad_face_x,pad_face_y,objects,-1,pad::Aim{4.5f,4.5f,-.2f});pick>=0){
-+                send(cmd::Interact{objects[std::size_t(pick)].id});return;
++            const int object_pick = pad::pick_target(hero_x,hero_y,pad_face_x,pad_face_y,objects,-1,pad::Aim{4.5f,4.5f,-.2f});
++            if(object_pick>=0){
++                // Keep container priority over drops, but let facing and distance
++                // resolve competition between an NPC and a nearby object.
++                people.push_back(objects[std::size_t(object_pick)]);
++                int pick = pad::pick_target(hero_x,hero_y,pad_face_x,pad_face_y,people,-1,pad::Aim{4.5f,4.5f,.55f});
++                if(pick<0)pick=pad::pick_target(hero_x,hero_y,pad_face_x,pad_face_y,people,-1,pad::Aim{4.5f,4.5f,-.2f});
++                send(cmd::Interact{people[std::size_t(pick)].id});return;
 +            }
              std::vector<pad::Candidate> drops;
 -            for (const auto& item : view.ground) drops.push_back({ item.id, item.x, item.y });
@@ -5186,7 +5247,7 @@ index 59369b9..1d3ce56 100644
                  send(cmd::Pickup{ drops[std::size_t(pick)].id });
                  return;
              }
-@@ -1458,7 +1689,7 @@ auto Town::pad_act() -> void {
+@@ -1458,7 +1704,7 @@ auto Town::pad_act() -> void {
                  for (std::size_t i = 0; i < level->npcs.size(); ++i) {
                      const auto& npc = level->npcs[i];
                      const UnitState* state = i < view.npc_states.size() ? &view.npc_states[i] : nullptr;
@@ -5195,7 +5256,7 @@ index 59369b9..1d3ce56 100644
                      if (state && !state->mode.empty() && npc.root == "objects" && !(npc.selectable >> game::mode_index(state->mode) & 1)) continue;
                      things.push_back({ int(i), state ? state->x : npc.x, state ? state->y : npc.y });
                  }
-@@ -1478,9 +1709,9 @@ auto Town::pad_walk() -> void {
+@@ -1478,9 +1724,9 @@ auto Town::pad_walk() -> void {
          if (walk) {
              const auto step = pad::world_step(pad_move.x, pad_move.y, kIsoW, kIsoH, 6.f);
              // Walk or run is the run toggle's (R, the left stick's click), as with the mouse.
@@ -5207,7 +5268,7 @@ index 59369b9..1d3ce56 100644
          }
          pad_walking = walk;
      }
-@@ -1491,7 +1722,7 @@ auto Town::pad_focus() const -> std::optional<PadFocus> {
+@@ -1491,7 +1737,7 @@ auto Town::pad_focus() const -> std::optional<PadFocus> {
              const auto rows = skillbar.rows(on_left);
              for (std::size_t row = 0; row < rows.size(); ++row)
                  for (std::size_t col = 0; col < rows[row].size(); ++col)
@@ -5216,7 +5277,7 @@ index 59369b9..1d3ce56 100644
                          const auto [x, y] = skillbar.picker_at(rows, on_left, int(row), int(col));
                          return PadFocus{ 3000 + skillbar.picking, x + SkillBar::kIcon / 2, y - SkillBar::kIcon / 2 };
                      }
-@@ -1502,6 +1733,18 @@ auto Town::pad_focus() const -> std::optional<PadFocus> {
+@@ -1502,6 +1748,18 @@ auto Town::pad_focus() const -> std::optional<PadFocus> {
              const int row = game_menu.menu == 0 ? 1 : count - 1;        // the main menu: Save and Exit; a submenu: its Previous
              return PadFocus{ 1000 + game_menu.menu, int(kScreenWidth) / 2, game_menu.top() + game_menu.step() * row + count + game_menu.step() / 2 };
          }
@@ -5235,7 +5296,7 @@ index 59369b9..1d3ce56 100644
          if (npc_menu.npc >= 0) {
              int base = npc_menu.y;
              for (const auto& line : npc_menu.lines) {                   // the topmost line you can choose
-@@ -1519,11 +1762,56 @@ auto Town::pad_snap_points() const -> std::vector<pad::Point> {
+@@ -1519,11 +1777,56 @@ auto Town::pad_snap_points() const -> std::vector<pad::Point> {
          std::vector<pad::Point> points;
          if (!scene) return points;
          const auto centre = [&](int x, int y, int width, int height) { points.push_back({ x + width / 2, y + height / 2 }); };
@@ -5293,7 +5354,7 @@ index 59369b9..1d3ce56 100644
          for (const auto& [layout, panel] : grids) {
              std::vector<bool> taken(std::size_t(layout->cols * layout->rows));
              for (const auto& item : character.items) {
-@@ -1550,9 +1838,12 @@ auto Town::pad_snap_points() const -> std::vector<pad::Point> {
+@@ -1550,9 +1853,12 @@ auto Town::pad_snap_points() const -> std::vector<pad::Point> {
                      const auto [x, y] = skillbar.picker_at(rows, on_left, int(row), int(col));
                      centre(x, y - SkillBar::kIcon, SkillBar::kIcon, SkillBar::kIcon);
                  }
@@ -5307,7 +5368,7 @@ index 59369b9..1d3ce56 100644
              if (held) centre(96, 123, 10 * 29, 10 * 29);
              else
                  for (const auto& stock : store.tabs[std::size_t(store.tab)]) {
-@@ -1563,12 +1854,55 @@ auto Town::pad_snap_points() const -> std::vector<pad::Point> {
+@@ -1563,12 +1869,55 @@ auto Town::pad_snap_points() const -> std::vector<pad::Point> {
          return points;
      }
  
@@ -5366,7 +5427,7 @@ index 59369b9..1d3ce56 100644
          const auto& inv = scene->inv_layout[std::size_t(std::max(character.character_class, 0))];
          for (const auto& item : character.items) {
              if (item.location != d2d::d2s::item_location::kStored || item.panel != d2d::d2s::item_panel::kInventory) continue;
-@@ -1901,12 +2235,22 @@ auto Town::walk(const Mouse& mouse, bool over_ui, std::uint32_t frame_ms, std::u
+@@ -1901,12 +2250,22 @@ auto Town::walk(const Mouse& mouse, bool over_ui, std::uint32_t frame_ms, std::u
          // sounds, the server's frame (FUN_0052fc20) doesn't run.
          if (!net_game && game_menu.open) world_ms = frame_ms;
          bool ticked = false;
@@ -5391,7 +5452,7 @@ index 59369b9..1d3ce56 100644
          if (!ticked && view.level == world.level) return;
          publish();
          // What the World said, handled once the View it came in is here
-@@ -1930,10 +2274,7 @@ auto Town::handle(const Event& event, std::uint32_t frame_ms) -> void {
+@@ -1930,10 +2289,7 @@ auto Town::handle(const Event& event, std::uint32_t frame_ms) -> void {
                  if (level_changed->keep_map) automap.open = other_automaps[level_changed->from->layer].open;
              }
              hovered_npc = -1;
@@ -5403,7 +5464,7 @@ index 59369b9..1d3ce56 100644
              npc_menu = {}; store = {}; speech = {}; waypoint = {}; menu_after_speech = -1;
              level_ms = frame_ms;                                  // its song comes in 3 s later
              return;
-@@ -1946,15 +2287,15 @@ auto Town::handle(const Event& event, std::uint32_t frame_ms) -> void {
+@@ -1946,15 +2302,15 @@ auto Town::handle(const Event& event, std::uint32_t frame_ms) -> void {
              return;
          }
          const auto& open_ui = std::get<ev::OpenUI>(event);
@@ -5423,7 +5484,7 @@ index 59369b9..1d3ce56 100644
              return;
          }
          // A joined game's lines are the host's (0x27, net_quests): ones that
-@@ -2065,6 +2406,9 @@ auto Town::open_menu(int npc) -> void {
+@@ -2065,6 +2421,9 @@ auto Town::open_menu(int npc) -> void {
  // Widescreen: the world draws into `framebuffer` (wider than kScreenWidth)
  // and everything else into its centre 800x600, as it always did.
  auto Town::draw(std::vector<std::uint8_t>& framebuffer, const Mouse& mouse, std::uint32_t frame_ms) -> void {
@@ -5433,7 +5494,7 @@ index 59369b9..1d3ce56 100644
      const int screen_w = fb_width(framebuffer);
      if (screen_w == int(kScreenWidth)) return draw_view(framebuffer, nullptr, mouse, frame_ms);
      const int off = (screen_w - int(kScreenWidth)) / 2;
-@@ -2084,6 +2428,11 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
+@@ -2084,6 +2443,11 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
          }
          if (pmode < 0) unit.mode_ms = std::max(unit.mode_ms, walk_ms);     // a swing's end restarts it too
          const int ui_cls = kSaveClassToUi[std::max(character.character_class, 0)];
@@ -5445,7 +5506,7 @@ index 59369b9..1d3ce56 100644
          // Monsters in view, as units the world draws by depth.
          std::vector<Unit> extra;
          // The camera (and the player's unit) between the World's last two
-@@ -2095,6 +2444,7 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
+@@ -2095,6 +2459,7 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
          cam_y = jump ? unit.y : prev_y + (unit.y - prev_y) * blend;
          state_clock.now = frame_ms;
          view_units(*scene, view, cam_x, cam_y, &merc_label, extra, den_beams, frame_ms, &character.name, std::max(character.character_class, 0), &state_clock);
@@ -5453,7 +5514,7 @@ index 59369b9..1d3ce56 100644
          // The host's overhead messages (0x26 type 5): a shrine's comes as
          // its string id in decimal ("3684", ShrMsg1). Each stays (length x 8
          // + 125) frames (FUN_00661110). An object's goes on d2d's object
-@@ -2143,7 +2493,16 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
+@@ -2143,7 +2508,16 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
          std::uint32_t mode_ms = unit.mode_ms;
          float rate = pmode >= 0 && pmode != kModeDD ? view.prate : 1.f;
          if (!view.seq.empty() && attack_mode(pmode)) { std::tie(mode, mode_ms) = view_seq(*scene, int(cls), view, frame_ms); rate = 1.f; }   // an SQ skill's frame
@@ -5470,7 +5531,7 @@ index 59369b9..1d3ce56 100644
          render_ingame(framebuffer, *scene, *view.level, ui_cls,
                        view.gfx,
                        character.name, character.hardcore,
-@@ -2156,9 +2515,14 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
+@@ -2156,9 +2530,14 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
                        nullptr, nullptr, nullptr, extra, rate, light.pal ? &light : nullptr, level->rain ? &rain : nullptr,
                        !(pmode == kModeDD && !view.corpses.empty()),    // dead, the corpse lies there instead
                        &player_look, alt_held || (SDL_GetModState() & SDL_KMOD_ALT) != 0,   // D2's "Show Items" (Alt)
@@ -5487,7 +5548,7 @@ index 59369b9..1d3ce56 100644
          if (net_game && net_game->trade.state != 0) {
              std::vector<d2d::d2s::Item> theirs;
              for (const auto& [id, stocked] : net_game->store_items) {
-@@ -2173,8 +2537,8 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
+@@ -2173,8 +2552,8 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
              draw_trade(framebuffer, *scene, trade.state, with.empty() ? std::string("Another player") : with, character.name, theirs, trade.ours, trade.their_gold,
                         trade.our_gold, trade_gold_typing ? &*trade_gold_typing : nullptr, held ? -1 : mouse.x, held ? -1 : mouse.y, nullptr);
          }
@@ -5498,7 +5559,7 @@ index 59369b9..1d3ce56 100644
          if (quest_log_was_open && !quest_log.open) {    // shut by any means (FUN_00455ae0 → FUN_004a28d0)
              quest_log.open = true;
              quest_log_close(quest_log, quest_bits(), quest_state());
-@@ -2187,10 +2551,16 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
+@@ -2187,10 +2566,16 @@ auto Town::draw_view(std::vector<std::uint8_t>& framebuffer, std::vector<std::ui
                              skill_pressed, held ? -1 : mouse.x, held ? -1 : mouse.y);
          if (waypoint.open)
              draw_waypoints(framebuffer, *scene, waypoint, character.header, character.expansion, level->id, mouse.x, mouse.y);
@@ -14054,7 +14115,7 @@ index d489a8f..381b635 100644
              for (auto& tab : store.tabs) tab = wire::items(input, *game_data.item_tables);
              store.header = view.header;
 diff --git a/components/game/world.cpp b/components/game/world.cpp
-index 1600791..f1b52f8 100644
+index 1600791..07d55fe 100644
 --- a/components/game/world.cpp
 +++ b/components/game/world.cpp
 @@ -1,12 +1,15 @@
@@ -14225,7 +14286,18 @@ index 1600791..f1b52f8 100644
          if (shrine.code == 18)                                  // gem: one up, or a chipped gem at the player's feet
              if (const auto code = d2d::rules::gem_shrine(game_data->rules, character.items, rng); !code.empty())
                  loot.put({ .code = code }, player.x, player.y, 1, fight.spawning.game, now_ms);
-@@ -649,9 +699,15 @@ auto World::reduced_prices() const -> int {
+@@ -617,7 +667,9 @@ auto World::operate_door(int npc_index, std::uint32_t now_ms) -> void {
+         const auto& door = level->npcs[std::size_t(npc_index)];
+         auto& state = doors.try_emplace({ level, npc_index }, Door{ mode_index(door.mode), 0 }).first->second;
+         int mode = -1;
+-        if (door.operate_fn == d2d::rules::operate_fn::kSecretDoor) {                   // secret door (FUN_00583ff0): slides open (OP), once
++        if (door.operate_fn == d2d::rules::operate_fn::kSlimeDoor) {
++            if (state.mode == 0) mode = 1; // Collision is already clear in OP.
++        } else if (door.operate_fn == d2d::rules::operate_fn::kSecretDoor) {            // secret door (FUN_00583ff0): slides open (OP), once
+             if (state.mode == 0) mode = 1;
+         } else if (door.operate_fn == d2d::rules::operate_fn::kTrapDoor) {            // trap door (FUN_00581eb0): opens, then down its room's warp (FUN_005550b0)
+             // ponytail: the level's nearest warp for the room's warp unit (trap
+@@ -649,9 +701,15 @@ auto World::reduced_prices() const -> int {
  // doors used since go back to their mode's footprint.
  // ponytail: every frame, a few doors; on relevel only if it shows.
  auto World::reopen_doors() -> void {
@@ -14244,7 +14316,7 @@ index 1600791..f1b52f8 100644
      }
  
  auto World::set_door_mode(int npc_index, int mode, std::uint32_t now_ms) -> void {
-@@ -660,7 +716,7 @@ auto World::set_door_mode(int npc_index, int mode, std::uint32_t now_ms) -> void
+@@ -660,7 +718,7 @@ auto World::set_door_mode(int npc_index, int mode, std::uint32_t now_ms) -> void
          if (state.mode == mode) return;
          state = { mode, now_ms };
          set_footprint(*level, door, door.collision >> mode & 1);   // FUN_00623830 out / FUN_00620a70 back in
@@ -14253,7 +14325,7 @@ index 1600791..f1b52f8 100644
          d2d::log::info("door {}: mode {}", npc_index, kObjectModes[std::size_t(mode)]);
      }
  
-@@ -697,7 +753,7 @@ auto World::explode(int npc_index, std::uint32_t now_ms) -> void {
+@@ -697,7 +755,7 @@ auto World::explode(int npc_index, std::uint32_t now_ms) -> void {
          using namespace d2d::d2s;
          const auto& barrel = level->npcs[std::size_t(npc_index)];
          operated[{ level, npc_index }] = now_ms;
@@ -14262,7 +14334,7 @@ index 1600791..f1b52f8 100644
          // FUN_00584240: a physical blast (FUN_005dfa00 type 0) on each live
          // unit within 3 subtiles.
          // ponytail: the level's units in the order player, merc, monsters,
-@@ -707,14 +763,19 @@ auto World::explode(int npc_index, std::uint32_t now_ms) -> void {
+@@ -707,14 +765,19 @@ auto World::explode(int npc_index, std::uint32_t now_ms) -> void {
          // takes 255, the 65 % floor every hireling's own dexterity puts it at.
          auto nearby = [&](float x, float y, float subtiles) { return std::hypot(x - barrel.x, y - barrel.y) * 5 <= subtiles; };
          const auto& fighter = fight.player_combat;
@@ -14288,7 +14360,25 @@ index 1600791..f1b52f8 100644
          }
          if (fight.mon_level == level)
              for (std::size_t k = 0; k < fight.monsters.size(); ++k) {
-@@ -820,16 +881,21 @@ auto World::spring_trap(int trap, float x, float y, int alvl, std::uint32_t now_
+@@ -733,7 +796,7 @@ auto World::explode(int npc_index, std::uint32_t now_ms) -> void {
+     }
+ 
+ auto World::arm_trap(int trap, float x, float y, int alvl, std::uint32_t now_ms) -> void {
+-        if (trap == 8 && d2d::rules::trap_undead(level->region[std::size_t(std::clamp(character.header.active_difficulty(), 0, 2))], 0) < 0) return;   // FUN_00582250
++        if (trap == 8 && d2d::rules::trap_undead(level->region[std::size_t(std::clamp(character.header.active_difficulty(), 0, 2))], d2d::rules::level_act(level->id)) < 0) return;
+         traps.push_back({ level, trap, x, y, alvl, now_ms + 35 * kTickMs });
+     }
+ 
+@@ -755,7 +818,7 @@ auto World::spring_trap(int trap, float x, float y, int alvl, std::uint32_t now_
+             return;
+         }
+         if (trap == 8) {                               // FUN_005822f0: 1 or 2 of the level's undead family
+-            const int fam = d2d::rules::trap_undead(level->region[std::size_t(diff)], 0);
++            const int fam = d2d::rules::trap_undead(level->region[std::size_t(diff)], d2d::rules::level_act(level->id));
+             if (fam < 0 || fight.mon_level != level) { d2d::log::info("trap 8: no undead here"); return; }
+             // FUN_0063ec70: the level's own variant of the family.
+             // ponytail: from the region, else the family's first (FUN_006510c0's step not traced).
+@@ -820,16 +883,21 @@ auto World::spring_trap(int trap, float x, float y, int alvl, std::uint32_t now_
      }
  
  auto World::enter(const Character& entering) -> void {
@@ -14317,7 +14407,7 @@ index 1600791..f1b52f8 100644
          store = {};
          stocks.clear();
          for (auto& list : hire_lists) list.clear();
-@@ -859,9 +925,43 @@ auto World::enter(const Character& entering) -> void {
+@@ -859,9 +927,43 @@ auto World::enter(const Character& entering) -> void {
          for (std::size_t i = 0; i < level->npcs.size() && i < npc_states.size(); ++i)
              if (level->npcs[i].quest == d2d::rules::CainQuest::kQuest) npc_states[i].hidden = !cain.camp_cain;
          show_palace();                                // a save left in act 2 starts in Lut Gholein
@@ -14361,7 +14451,7 @@ index 1600791..f1b52f8 100644
          fight.new_game(character.header.active_difficulty());
          set_waypoint(0);                          // the town's is always active (FUN_00661030 forces index 0 as the save loads)
          day = {};                                 // a new game starts at sunrise
-@@ -890,7 +990,7 @@ auto World::new_game() -> void {
+@@ -890,7 +992,7 @@ auto World::new_game() -> void {
              auto& level_rw = const_cast<Level&>(*built);         // GameData owns its levels mutable
              if (level_rw.npcs.size() > level_rw.npc_base && level_rw.walk.size() == level_rw.tile_walk.size()) {
                  level_rw.npcs.resize(level_rw.npc_base);
@@ -14370,7 +14460,7 @@ index 1600791..f1b52f8 100644
                  stamp_footprints(level_rw);
              }
              for (const auto& npc : built->npcs)
-@@ -913,6 +1013,7 @@ auto World::new_game() -> void {
+@@ -913,6 +1015,7 @@ auto World::new_game() -> void {
      }
  
  auto World::spawn_merc() -> void {
@@ -14378,7 +14468,7 @@ index 1600791..f1b52f8 100644
          merc.reset();
          const auto& header = character.header;
          if (const auto found = game_data->mercs.find(header.merc_type); header.merc_seed && !header.merc_dead && found != game_data->mercs.end()) {
-@@ -990,6 +1091,19 @@ auto World::respawn(std::uint32_t now_ms) -> void {
+@@ -990,6 +1093,19 @@ auto World::respawn(std::uint32_t now_ms) -> void {
      }
  
  auto World::cross_level() -> void {
@@ -14398,7 +14488,7 @@ index 1600791..f1b52f8 100644
          const float world_x = float(level->world_x) + target_x, world_y = float(level->world_y) + target_y;
          bool known = level->inside(target_x, target_y);
          for (const auto& neighbour : level->nearby) known = known || neighbour.level->inside(target_x - float(neighbour.dx), target_y - float(neighbour.dy));
-@@ -1153,6 +1267,7 @@ auto World::transmute(std::uint32_t now_ms) -> void {
+@@ -1153,6 +1269,7 @@ auto World::transmute(std::uint32_t now_ms) -> void {
          auto made = d2d::rules::cube_make(game_data->rules, recipe, match, cube, int(character.stats.get(d2d::d2s::kLevel)), character.expansion, diff,
                                            fight.spawning.game, &loot.found_uniques);
          if (!made.made) { d2d::log::info("transmute: {} made nothing", recipe.description); return; }
@@ -14406,7 +14496,7 @@ index 1600791..f1b52f8 100644
          std::erase_if(character.items, [](const Item& item) { return item.location == d2d::d2s::item_location::kStored && item.panel == d2d::d2s::item_panel::kCube; });
          const auto& layout = game_data->cube_layout;
          for (auto& item : made.items) {
-@@ -1430,7 +1545,7 @@ auto World::cain_operate(int npc_index, std::uint32_t now_ms) -> void {
+@@ -1430,7 +1547,7 @@ auto World::cain_operate(int npc_index, std::uint32_t now_ms) -> void {
              const bool spawned = found != level->npcs.end();
              cain.rescued(spawned);
              if (spawned) cain_walk = { .npc = int(found - level->npcs.begin()), .next = now_ms + std::uint32_t(object.op_frames) * 40 };
@@ -14415,7 +14505,7 @@ index 1600791..f1b52f8 100644
              d2d::log::info("Search for Cain: Cain is free");
              return;
          }
-@@ -1442,6 +1557,7 @@ auto World::cain_operate(int npc_index, std::uint32_t now_ms) -> void {
+@@ -1442,6 +1559,7 @@ auto World::cain_operate(int npc_index, std::uint32_t now_ms) -> void {
          if (lit == Cain::Stone::none) return;
          operated[{ level, npc_index }] = now_ms;
          if (lit == Cain::Stone::lit) return;
@@ -14423,7 +14513,7 @@ index 1600791..f1b52f8 100644
          character.items.erase(std::ranges::find(character.items, std::string_view("bkd"), &d2d::d2s::Item::code));
          const auto lambda = std::ranges::find(level->npcs, 21, &Npc::object_id);
          const auto [spot_x, spot_y] = level->nearest_free(lambda == level->npcs.end() ? object.x : lambda->x + 6, lambda == level->npcs.end() ? object.y : lambda->y - 3);
-@@ -1525,6 +1641,7 @@ auto World::use_warp() -> void {
+@@ -1525,6 +1643,7 @@ auto World::use_warp() -> void {
      }
  
  auto World::arrive(const Level* destination, float arrive_x, float arrive_y, const char* how) -> void {
@@ -14431,7 +14521,7 @@ index 1600791..f1b52f8 100644
          const auto [free_x, free_y] = destination->nearest_free(arrive_x, arrive_y);
          const float dx = player.x - free_x, dy = player.y - free_y;
          fight.pets_cross(level, destination, dx, dy);
-@@ -1551,6 +1668,7 @@ auto World::arrive(const Level* destination, float arrive_x, float arrive_y, con
+@@ -1551,6 +1670,7 @@ auto World::arrive(const Level* destination, float arrive_x, float arrive_y, con
          std::tie(player.x, player.y) = level->nearest_free(player.x, player.y);   // off what the room just made
          loot.enter(level);
          swap_npcs(from);
@@ -14439,7 +14529,7 @@ index 1600791..f1b52f8 100644
          interact_npc = pick_item = take_warp = take_portal = -1;
          if (level->id == d2d::rules::DenQuest::kDen) den.enter_den(quests());
          d2d::log::info("level: {} at ({:.1f}, {:.1f}), through {} from {}", level_name(*level), free_x, free_y, how, level_name(*from));
-@@ -1565,6 +1683,12 @@ auto World::set_act(int act) -> void {
+@@ -1565,6 +1685,12 @@ auto World::set_act(int act) -> void {
  
  auto World::death_penalty(std::uint32_t now_ms) -> void {
          using namespace d2d::d2s;
@@ -14452,7 +14542,7 @@ index 1600791..f1b52f8 100644
          auto& stat_values = character.stats.values;
          const int lvl = int(stat_values[kLevel]);
          const int difficulty = character.header.active_difficulty();
-@@ -1633,18 +1757,33 @@ auto World::read_portal(std::vector<d2d::d2s::Item>::iterator scroll, std::uint3
+@@ -1633,18 +1759,33 @@ auto World::read_portal(std::vector<d2d::d2s::Item>::iterator scroll, std::uint3
  
  auto World::open_portal(std::uint32_t now_ms) -> void { open_portal_at(player.x, player.y + 0.6f, now_ms); }
  
@@ -14489,7 +14579,7 @@ index 1600791..f1b52f8 100644
  auto World::use_portal(std::uint32_t now_ms) -> void {
          if (take_portal < 0 || !portal[std::size_t(take_portal)].level) return;
          const auto& taken = portal[std::size_t(take_portal)];
-@@ -1681,21 +1820,37 @@ auto World::use_portal(std::uint32_t now_ms) -> void {
+@@ -1681,21 +1822,37 @@ auto World::use_portal(std::uint32_t now_ms) -> void {
              arrive(twin.level, twin.x, twin.y + 0.6f, "a quest portal");
              return;
          }
@@ -14530,7 +14620,7 @@ index 1600791..f1b52f8 100644
              store.header = character.header;
              events.push_back(ev::OpenUI{ ev::OpenUI::trade, trade->npc });
              return true;
-@@ -1710,23 +1865,39 @@ auto World::deal(const Command& command) -> bool {
+@@ -1710,23 +1867,39 @@ auto World::deal(const Command& command) -> bool {
              store.reduced = reduced_prices();
              if (buy->tab >= 0 && buy->tab < 4) store.tab = buy->tab;   // the client's tab: the world's stays where the store opened
              if (std::size_t(buy->stock) >= store.tabs[std::size_t(store.tab)].size()) return true;
@@ -14574,7 +14664,7 @@ index 1600791..f1b52f8 100644
              return true;
          }
          // Cain's identify (FUN_00578460): 100 gold an item, all at once, unless
-@@ -1755,6 +1926,8 @@ auto World::deal(const Command& command) -> bool {
+@@ -1755,6 +1928,8 @@ auto World::deal(const Command& command) -> bool {
          if (const auto* hire = std::get_if<cmd::Hire>(&command)) {
              auto offers = hire_offers(act());
              if (hire->offer >= 0 && std::size_t(hire->offer) < offers.size() && d2d::rules::hire(offers[std::size_t(hire->offer)], character.header, character.stats)) {
@@ -14583,7 +14673,7 @@ index 1600791..f1b52f8 100644
                  // The entry's taken (packet 0x50 subtype 2); none left, the list rolls anew (FUN_00577010).
                  int seen = 0;
                  for (auto& entry : hire_lists[std::size_t(act())])
-@@ -1778,7 +1951,10 @@ auto World::deal(const Command& command) -> bool {
+@@ -1778,7 +1953,10 @@ auto World::deal(const Command& command) -> bool {
              }
              return true;
          }
@@ -14595,7 +14685,7 @@ index 1600791..f1b52f8 100644
          // Akara's reset (the 0x38 handler for her, hcIdx 0x94): while quest
          // 41 (the Den of Evil's reward) is open, stats and skills go back,
          // then it's used (FUN_0058fd50: bit 0 on, 1 off).
-@@ -1914,7 +2090,61 @@ auto World::deal(const Command& command) -> bool {
+@@ -1914,7 +2092,61 @@ auto World::deal(const Command& command) -> bool {
          return false;
      }
  
@@ -14657,7 +14747,7 @@ index 1600791..f1b52f8 100644
          // The character's own: through whatever the player's doing.
          if (const auto* stat_point = std::get_if<cmd::StatPoint>(&command)) {
              if (stat_point->stat < 0 || stat_point->stat > 3 || stat_point->count < 1) return;
-@@ -1991,6 +2221,34 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
+@@ -1991,6 +2223,34 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
          // The cursor (cursor.hpp works out which from a click).
          const auto& tables = game_data->rules;
          const int cls = character.header.cls;
@@ -14692,7 +14782,7 @@ index 1600791..f1b52f8 100644
          if (const auto* to_cursor = std::get_if<cmd::ToCursor>(&command)) {
              const auto found = std::ranges::find(character.items, to_cursor->item, &d2d::d2s::Item::id);
              if (!held && found != character.items.end()) d2d::rules::pick_up(character.items, held, std::size_t(found - character.items.begin()));
-@@ -2007,10 +2265,18 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
+@@ -2007,10 +2267,18 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
          if (const auto* to_grid = std::get_if<cmd::ToGrid>(&command)) {
              const auto* layout = to_grid->panel == d2d::d2s::item_panel::kInventory ? &game_data->inv_layout[std::size_t(cls)] : to_grid->panel == d2d::d2s::item_panel::kCube ? &game_data->cube_layout
                            : to_grid->panel == d2d::d2s::item_panel::kStash ? &game_data->stash_layout[character.expansion ? 1 : 0] : nullptr;
@@ -14711,7 +14801,7 @@ index 1600791..f1b52f8 100644
              if (held && to_body->slot >= d2d::d2s::body_location::kFirst && to_body->slot <= d2d::d2s::body_location::kLast) d2d::rules::equip(tables, character.items, held, to_body->slot, wearer(*game_data, cls, character.items, character.stats));
              return;
          }
-@@ -2025,7 +2291,7 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
+@@ -2025,7 +2293,7 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
          }
          if (fight.pmode >= 0) return;
          const bool in_moor = !in_town(level);
@@ -14720,7 +14810,7 @@ index 1600791..f1b52f8 100644
              target_x = x; target_y = y;
              player.walking = true;
              interact_npc = -1;
-@@ -2034,13 +2300,13 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
+@@ -2034,13 +2302,13 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
              fight.attack_mon = pick_item = -1;
              take_warp = -1;                                                  // a click on a warp: go through it
              for (std::size_t i = 0; i < level->warps.size(); ++i)
@@ -14737,7 +14827,7 @@ index 1600791..f1b52f8 100644
              pick_item = pickup->item;
              return;
          }
-@@ -2048,14 +2314,14 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
+@@ -2048,14 +2316,14 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
              if (interact->npc <= -3000 && interact->npc > -3000 - int(corpses.size())) {   // one's corpse (-3000 - k)
                  const auto& body = corpses[std::size_t(-3000 - interact->npc)];
                  if (body.level != level) return;
@@ -14754,7 +14844,7 @@ index 1600791..f1b52f8 100644
                  take_portal = -2000 - interact->npc;
                  return;
              }
-@@ -2063,7 +2329,9 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
+@@ -2063,7 +2331,9 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
              const auto& npc = level->npcs[std::size_t(interact->npc)];
              const auto& state = npc_states[std::size_t(interact->npc)];
              const float npc_x = npc.path.empty() ? npc.x : state.x, npc_y = npc.path.empty() ? npc.y : state.y;
@@ -14765,7 +14855,7 @@ index 1600791..f1b52f8 100644
              const bool menu = std::ranges::any_of(kNpcMenus, [&](const NpcMenu& menu_entry) { return menu_entry.hc_idx == npc.hc_idx; });
              const bool usable = is_door(npc.operate_fn) || npc.operate_fn == d2d::rules::operate_fn::kWell || npc.operate_fn == d2d::rules::operate_fn::kMoldyTome || (operable(npc.operate_fn) && !npc.preoperated && !operated.contains({ level, interact->npc }));
              const bool quest_object = npc.operate_fn == d2d::rules::operate_fn::kCairnStone || npc.operate_fn == d2d::rules::operate_fn::kGibbet || npc.operate_fn == d2d::rules::operate_fn::kInifussTree
-@@ -2073,11 +2341,13 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
+@@ -2073,11 +2343,13 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
              return;
          }
          const auto& use_skill = std::get<cmd::UseSkill>(command);
@@ -14780,7 +14870,7 @@ index 1600791..f1b52f8 100644
          } else if (skill && skill->srvdofunc == ServerDoFunction::kWhirlwind && monster_index < 0) {                      // Whirlwind to that point (FUN_005d8f50)
              fight.move_x = use_skill.x; fight.move_y = use_skill.y;
              fight.attack_mon = -1;
-@@ -2107,12 +2377,13 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
+@@ -2107,12 +2379,13 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
  // ponytail: the run stays a run while stamina lasts and walks at 0 each
  // frame, not at the next move as game.exe; the same since a walk at 0 never
  // regens.
@@ -14795,7 +14885,7 @@ index 1600791..f1b52f8 100644
          if (run && !town) {
              int armor_speed = 0;
              for (const auto& item : character.items)
-@@ -2160,14 +2431,14 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
+@@ -2160,14 +2433,14 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
          }
          std::erase_if(fires, [&](const Fire& fire) { return fire.gone && now_ms >= fire.gone; });
          if (level != wanted_near) { want_nearby(*game_data, *level); wanted_near = level; }
@@ -14812,7 +14902,7 @@ index 1600791..f1b52f8 100644
          }
          if (fight.boost.until && now_ms >= fight.boost.until) {     // the state runs out
              if (shrine_code(fight.boost.shrine) == 14) character.stats.values[d2d::d2s::kStamina] = character.stats.values[d2d::d2s::kMaxStamina];
-@@ -2185,7 +2456,9 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
+@@ -2185,16 +2458,28 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
              const int reset = npc.operate_fn == d2d::rules::operate_fn::kShrine && std::size_t(npc.shrine) < game_data->shrines.size() ? game_data->shrines[std::size_t(npc.shrine)].reset : 0;
              const bool back = reset > 0 && now_ms - when_ms >= d2d::rules::shrine_reset_frames(reset) * kTickMs;
              if (key.first == level && npc_index < npc_states.size()) {
@@ -14823,16 +14913,29 @@ index 1600791..f1b52f8 100644
                  // Its message overhead (ShrMsgN, 3683 + row: FUN_00661110 on
                  // "%d", 4 chars x 8 + 125 frames).
                  npc_states[npc_index].says = std::uint16_t(npc.operate_fn == d2d::rules::operate_fn::kShrine && !back && now_ms - when_ms < 157u * kTickMs ? 3683 + npc.shrine : 0);
-@@ -2194,7 +2467,7 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
+             }
+             entry = back ? operated.erase(entry) : std::next(entry);
          }
-         for (const auto& [key, door] : doors)                  // doors in the mode they were left in
-             if (key.first == level && std::size_t(key.second) < npc_states.size())
+-        for (const auto& [key, door] : doors)                  // doors in the mode they were left in
+-            if (key.first == level && std::size_t(key.second) < npc_states.size())
 -                std::tie(npc_states[std::size_t(key.second)].mode, npc_states[std::size_t(key.second)].mode_ms) = std::pair{ kObjectModes[std::size_t(door.mode)], door.when };
++        for (const auto& [key, door] : doors) {                 // doors in the mode they were left in
++            if (key.first == level && std::size_t(key.second) < npc_states.size()) {
++                const auto& npc = level->npcs[std::size_t(key.second)];
++                if (npc.operate_fn == d2d::rules::operate_fn::kSlimeDoor && door.mode == 1 && npc.object_frames[2]) {
++                    const auto duration = game_data->npc_timing(npc, "OP").length_ms();
++                    if (now_ms - door.when >= duration) {
++                        set_door_mode(key.second, 2, now_ms);
++                        continue;
++                    }
++                }
 +                object_mode(key.second,kObjectModes[std::size_t(door.mode)],door.when,door.when>=arrived_at);
++            }
++        }
          Crowd crowd;                           // who's in whose way this frame
          crowd.units.push_back(&player);
          if (merc) crowd.units.push_back(&merc->unit);
-@@ -2220,6 +2493,7 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
+@@ -2220,6 +2505,7 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
          if (!fight.dead()) {
          const bool busy = fight.pmode >= 0;
          for (const auto& command : cmds) if (!std::holds_alternative<cmd::Resurrect>(command)) apply(command, now_ms);
@@ -14840,7 +14943,7 @@ index 1600791..f1b52f8 100644
          // Close enough to the stash: open it with the inventory.
          // ponytail: 2 cells, not D2's per-object operate range.
          if (interact_npc >= 0) {
-@@ -2239,8 +2513,10 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
+@@ -2239,8 +2525,10 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
                      // up (mode 1 → 2) and the panel waits for the next touch.
                      set_waypoint(0);
                      set_waypoint(waypoint_index(*game_data, level->id));
@@ -14853,7 +14956,7 @@ index 1600791..f1b52f8 100644
                  } else {
                      if (d2d::rules::is_healer(npc.hc_idx)) { d2d::rules::heal(character.stats); fight.cure(now_ms); }
                      // In Hell, a Den of Evil done before the reset existed
-@@ -2252,7 +2528,13 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
+@@ -2252,7 +2540,13 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
                          constexpr int kRespec = d2d::rules::kRespecQuest;
                          if (quest::bit(quest_bits, d2d::rules::DenQuest::kQuest, 0) && !quest::bit(quest_bits, kRespec, 1) && !quest::bit(quest_bits, kRespec, 0)) { d2d::rules::quest::set(quest_bits, kRespec, 13); d2d::rules::quest::set(quest_bits, kRespec, 1); }
                      }
@@ -14868,7 +14971,7 @@ index 1600791..f1b52f8 100644
                  }
                  player.walking = false; interact_npc = -1;
              } else if (!player.walking) {
-@@ -2318,7 +2600,8 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
+@@ -2318,7 +2612,8 @@ auto World::tick(const std::vector<Command>& cmds, std::uint32_t now_ms, std::ui
          // The world goes on with the player dead (game.exe runs the rooms
          // around the corpse till the respawn): monsters see the dead player
          // as not alive (Fight::world) and think on.
@@ -14879,7 +14982,7 @@ index 1600791..f1b52f8 100644
          for (const auto& neighbour : level->nearby) {           // over the edge, still in play
              auto& states = other_npcs[neighbour.level];
 diff --git a/components/game/world.hpp b/components/game/world.hpp
-index cb8a338..aa5c662 100644
+index cb8a338..8549a4c 100644
 --- a/components/game/world.hpp
 +++ b/components/game/world.hpp
 @@ -18,6 +18,7 @@
@@ -14982,6 +15085,15 @@ index cb8a338..aa5c662 100644
      int shrine_code(int row) const { return row > 0 && std::size_t(row) < game_data->shrines.size() ? game_data->shrines[std::size_t(row)].code : 0; }
      // The OperateFns `operate` handles; one-shot ones stay used (operated):
      // containers, stands, wells, bookshelves, shrines, traps and doors.
+@@ -396,7 +403,7 @@ struct World {
+     }
+     static bool is_door(int operate_fn) {
+         using namespace d2d::rules::operate_fn;
+-        return operate_fn == kDoor || operate_fn == kTrapDoor || operate_fn == kSecretDoor;
++        return operate_fn == kDoor || operate_fn == kTrapDoor || operate_fn == kSecretDoor || operate_fn == kSlimeDoor;
+     }
+     // A door, trap door or secret door (rules::door_mode): its new mode,
+     // footprint and sound.
 @@ -447,6 +454,8 @@ struct World {
      void enter(const Character& entering);
  
@@ -16002,6 +16114,18 @@ index c721e23..ffaa756 100644
      bool can_block = false;                     // MonStats2 mBL
      int threat = 0;                             // threat (record +0x4e, FUN_005dc920): a mode 5 search's primary at 2 or more
      bool switch_ai = false;                     // SwitchAI (flags +0xe & 1, FUN_00573040): Confuse / Attract can set its target
+diff --git a/components/rules/object_ids.hpp b/components/rules/object_ids.hpp
+index 4bfbc55..1eb2a62 100644
+--- a/components/rules/object_ids.hpp
++++ b/components/rules/object_ids.hpp
+@@ -34,6 +34,7 @@ inline constexpr int kInifussTree = 12;
+ inline constexpr int kCorpse = 14;          // FUN_005867a0
+ inline constexpr int kTrapDoor = 16;        // FUN_00581eb0
+ inline constexpr int kSecretDoor = 18;      // FUN_00583ff0
++inline constexpr int kSlimeDoor = 29;
+ inline constexpr int kArmorStand = 19;
+ inline constexpr int kWeaponRack = 20;
+ inline constexpr int kMalusStand = 21;      // the Horadric Malus' stand
 diff --git a/components/rules/rules.hpp b/components/rules/rules.hpp
 index 566d39d..b079666 100644
 --- a/components/rules/rules.hpp

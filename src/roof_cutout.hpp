@@ -4,7 +4,7 @@
 #include <cmath>
 namespace d2mini {
 struct RoofCutout {
- static constexpr int kRadius=110;
+ static constexpr int kRadius=160;
  int x=0,y=0,radius=0;
  int alpha(int px,int py,int base)const{
   const int dx=px-x,dy=py-y,d2=dx*dx+dy*dy;

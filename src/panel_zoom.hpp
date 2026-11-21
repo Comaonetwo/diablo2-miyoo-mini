@@ -46,6 +46,18 @@ inline void expand_rect(std::span<std::uint8_t> f,int sx,int sy,int sw,int sh,in
     std::memcpy(to,from,4);std::memcpy(to+4,from,16);
    }
   }
+ }else if(w%5==0&&sw==w/5*3){
+  // World 480 uses exactly the same samples as floor(x * 480 / 800).
+  for(int y=sy;y<sy+sh;++y){
+   std::memcpy(row.data(),f.data()+(y*800+sx)*4,std::size_t(sw)*4);
+   auto* to=f.data()+(y*800+dx)*4;
+   const auto* from=row.data();
+   for(int x=0;x<w;x+=5,to+=20,from+=12){
+    std::memcpy(to,from,4);
+    std::memcpy(to+4,from,8);
+    std::memcpy(to+12,from+4,8);
+   }
+  }
  }else{
   for(int y=sy;y<sy+sh;++y){std::memcpy(row.data(),f.data()+y*3200,3200);for(int x=0;x<w;++x)std::memcpy(f.data()+(y*800+dx+x)*4,row.data()+(sx+x*sw/w)*4,4);}
  }

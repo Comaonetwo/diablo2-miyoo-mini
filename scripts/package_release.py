@@ -9,8 +9,8 @@ def allowed(name):
  p=Path(name)
  return not p.is_absolute() and '..' not in p.parts and '.git' not in p.parts and p.suffix.lower() not in DENIED and p.as_posix()!='src/menu_art.hpp'
 def inputs():
- names=['CMakeLists.txt','README.md','BUILDING.md','LICENSE','THIRD-PARTY.md','VERSION','dependencies.json','.gitignore']
- for directory in ['src','tests','scripts','patches','packaging','assets']:
+ names=['CMakeLists.txt','README.md','CONTRIBUTING.md','BUILDING.md','LICENSE','THIRD-PARTY.md','VERSION','dependencies.json','.gitignore']
+ for directory in ['src','tests','scripts','patches','packaging','assets','.github']:
   names += [p.relative_to(ROOT).as_posix() for p in (ROOT/directory).rglob('*') if p.is_file() and '__pycache__' not in p.parts]
  for dep in json.loads((ROOT/'dependencies.json').read_text()).values():
   names += [p.relative_to(ROOT).as_posix() for p in (ROOT/dep['path']).rglob('*') if p.is_file() and '.git' not in p.parts and '__pycache__' not in p.parts]
@@ -60,7 +60,7 @@ Arguments=""
 /mnt/SDCARD/Emu/PORTS/launch_standalone.sh "$GameName" "$GameDir" "$GameExecutable" "$Arguments" "$GameDataFile" "$KillAudioserver" "$PerformanceMode"
 ''');short.chmod(0o755)
  icon=stage/'Roms/PORTS/Imgs/DIABLO II.png';icon.parent.mkdir(parents=True);shutil.copy2(source/'assets/ports/DIABLO II.png',icon)
- for src,dst in [('packaging/INSTALL.md','INSTALL.txt'),('README.md','README.md'),('BUILDING.md','BUILDING.md'),('LICENSE','COPYING'),('THIRD-PARTY.md','THIRD-PARTY.md'),('assets/ports/ARTWORK-NOTICE.txt','ARTWORK-NOTICE.txt')]:shutil.copy2(source/src,stage/dst)
+ for src,dst in [('packaging/INSTALL.md','INSTALL.txt'),('README.md','README.md'),('CONTRIBUTING.md','CONTRIBUTING.md'),('BUILDING.md','BUILDING.md'),('LICENSE','COPYING'),('THIRD-PARTY.md','THIRD-PARTY.md'),('assets/ports/ARTWORK-NOTICE.txt','ARTWORK-NOTICE.txt')]:shutil.copy2(source/src,stage/dst)
  readme=stage/'README.md';readme.write_text(readme.read_text().replace('(packaging/INSTALL.md)','(INSTALL.txt)').replace('(assets/ports/ARTWORK-NOTICE.txt)','(ARTWORK-NOTICE.txt)'))
  sources=stage/'Sources';sources.mkdir();archive=sources/f'diablo2-miyoo-{version}-corresponding-source.tar.gz'
  names=sorted(source_manifest)+['SOURCE-MANIFEST.json']
