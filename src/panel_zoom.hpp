@@ -79,7 +79,46 @@ inline void large_panels(std::span<std::uint8_t> f,bool left,bool right,bool tre
 }
 // Preserve old bool callers as mode 1; mode 2 crops a centered 480x360.
 inline int world_width(int mode){return mode==2?480:mode?640:800;}
-inline void zoom_world(std::span<std::uint8_t> f,int mode=1){const int w=world_width(mode),h=w*3/4;expand_rect(f,(800-w)/2,(600-h)/2,w,h,0,0,800,600);}
+template<int source_group>
+inline void zoom_world_rows(std::span<std::uint8_t> frame) {
+ constexpr int width = 800 * source_group / 5;
+ constexpr int height = 600 * source_group / 5;
+ constexpr int left = (800 - width) / 2;
+ constexpr int top = (600 - height) / 2;
+ constexpr int stride = 800 * 4;
+ std::array<std::uint8_t, width * 4> row;
+ const auto expand_row = [&](int y) {
+  const int first = (y * 5 + source_group - 1) / source_group;
+  const int end = ((y + 1) * 5 + source_group - 1) / source_group;
+  const auto* source = frame.data() + (top + y) * stride + left * 4;
+  auto* output = frame.data() + first * stride;
+  // Near the centre, source and destination can share a scanline.
+  if (first == top + y) {
+   std::memcpy(row.data(), source, row.size());
+   source = row.data();
+  }
+  for (int group = 0; group < 800 / 5; ++group) {
+   auto* dest = output + group * 20;
+   std::memcpy(dest, source, 4);
+   if constexpr (source_group == 4) {
+    std::memcpy(dest + 4, source, 16);
+   } else {
+    std::memcpy(dest + 4, source, 8);
+    std::memcpy(dest + 12, source + 4, 8);
+   }
+   source += source_group * 4;
+  }
+  if (end == first + 2) std::memcpy(output + stride, output, stride);
+ };
+ // Read from the outer edges towards the centre so unread rows stay intact.
+ for (int y = 0; y < height / 2; ++y) expand_row(y);
+ for (int y = height - 1; y >= height / 2; --y) expand_row(y);
+}
+inline void zoom_world(std::span<std::uint8_t> frame, int mode=1) {
+ if (frame.size() != 800 * 600 * 4 || mode == 0) return;
+ if (mode == 2) zoom_world_rows<3>(frame);
+ else zoom_world_rows<4>(frame);
+}
 inline int world_input_x(int x,int mode){const int w=world_width(mode);return (800-w)/2+x*w/800;}
 inline int world_input_y(int y,int mode){const int h=world_width(mode)*3/4;return (600-h)/2+y*h/600;}
 
