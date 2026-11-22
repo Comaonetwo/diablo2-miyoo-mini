@@ -5580,7 +5580,7 @@ index 59369b9..cd62396 100644
      }
  
 diff --git a/apps/d2d/town.hpp b/apps/d2d/town.hpp
-index caac2c9..55c889b 100644
+index caac2c9..2e6f76f 100644
 --- a/apps/d2d/town.hpp
 +++ b/apps/d2d/town.hpp
 @@ -5,6 +5,7 @@
@@ -5660,10 +5660,11 @@ index caac2c9..55c889b 100644
      bool  inv_open = false;   // 'I' — inventory panel
      bool  char_open = false;  // 'C' — character panel
      bool  stats_down = false, skills_down = false;   // New Stats / New Skills held (DAT_007c02e4 / DAT_007c02e8)
-@@ -269,6 +282,15 @@ struct Town {
+@@ -269,6 +282,16 @@ struct Town {
  
      Town(const Scene* game_scene, CharCreateUI& player_character, int start_x = -1, int start_y = -1)
          : scene(game_scene), character(player_character), world(game_scene, start_x, start_y) {
++        if (!game_scene) return;  // The client can still display its test pattern.
 +        world.before_arrive = [game_scene] {
 +            // Input/world ticks precede draw_view: the previous frame's Unit
 +            // pointers are gone. Rebuild destination rooms without retaining
@@ -5676,7 +5677,7 @@ index caac2c9..55c889b 100644
          have_world = world.level && !world.level->dt1s.empty();
          view = world.view();
          level = view.level;
-@@ -320,6 +342,7 @@ struct Town {
+@@ -320,6 +343,7 @@ struct Town {
      [[nodiscard]] const d2d::rules::QuestBits& quest_bits() const;
      [[nodiscard]] QuestState quest_state() const { return { view.quest_log, view.game_quests, view.den_left }; }
      int view_act() const;
@@ -5684,7 +5685,7 @@ index caac2c9..55c889b 100644
      void toggle_quest_log();               // Q and the mini-panel (FUN_004a3fe0)
      [[nodiscard]] QuestLogButton quest_log_button_now() const;
  
-@@ -338,6 +361,7 @@ struct Town {
+@@ -338,6 +362,7 @@ struct Town {
      int menu_after_speech = -1;                    // the NPC whose menu opens once its quest speech ends
      bool questdone_sound = false;                  // the quest log's done animation began (draw → update)
      bool quest_log_was_open = false;               // UI 0xf last frame: shutting it marks the animations seen (FUN_004a28d0)
