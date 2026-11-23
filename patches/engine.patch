@@ -1522,7 +1522,7 @@ index 4f10b48..1adf222 100644
 +            if (!free_cursor) key(Button::Start, Key::Escape);
 +            if(sample.digital&&panel&&sample[Button::Back]&&pressed(Button::Start)){out.quick_sort=true;out.large_text_toggle=false;back_used_=true;}
 +            if (sample.digital) {
-+                if(sample[Button::Back]&&pressed(Button::North)){if(panel&&!shop)out.quick_drop=true;else if(!panel)out.keys.push_back(Key::ToggleRun);back_used_=true;}
++                if(sample[Button::Back]&&!cursor_only&&pressed(Button::North)){if(panel&&!shop)out.quick_drop=true;else if(!panel)out.keys.push_back(Key::ToggleRun);back_used_=true;}
 +                if(sample[Button::Back]&&pressed(Button::West)&&!panel){out.keys.push_back(Key::SwapWeapons);back_used_=true;}
 +                if(sample[Button::Back]){
 +                    if (!cursor_only) {key(Button::DpadUp,Key::SkillTree);key(Button::DpadDown,Key::QuestLog);key(Button::DpadLeft,Key::ShowBelt);key(Button::DpadRight,Key::Mercenary);}

@@ -86,6 +86,18 @@ int main()try{
     s.held[std::size_t(Button::Back)]=true;s.held[std::size_t(Button::North)]=true;
     a=m.step(s,Context::Panel,.04f);check(a.quick_drop&&a.keys.empty()&&!a.rclick_press&&!a.click_press);
     s.held.fill(false);check(m.step(s,Context::Panel,.04f).keys.empty());
+    // SELECT+X is a short chord. A long SELECT is manual cursor control.
+    for (auto context : {Context::Panel, Context::Game}) {
+        Mapper mapper;
+        Sample input;
+        input.digital = true;
+        input.held[std::size_t(Button::Back)] = true;
+        mapper.step(input, context, .04f);
+        mapper.step(input, context, .04f, 1.1f);
+        input.held[std::size_t(Button::North)] = true;
+        auto out = mapper.step(input, context, .04f);
+        check(out.cursor_mode && !out.quick_drop && out.keys.empty() && !out.rclick_press);
+    }
     check(visible_drop(-1.f,-4.9f,false)&&!visible_drop(5.5f,0,false));
     check(!visible_drop(-1.f,-4.9f,true)&&visible_drop(0,0,true));
     check(visible_drop(1.75f,-1.75f,1)&&!visible_drop(1.75f,-1.75f,2)&&visible_drop(0,0,2));
