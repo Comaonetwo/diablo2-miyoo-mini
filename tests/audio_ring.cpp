@@ -12,6 +12,14 @@ int main()try{
  r->head=r->tail=UINT32_MAX-100;
  for(unsigned i=0;i<in.size();++i)in[i]=int16_t(i);
  check(d2_audio_write(r.get(),in.data(),512)==512);check(d2_audio_read(r.get(),out.data(),512)==512&&in==out);
+ // Both halves of a wrapped write must respect the remaining queue space.
+ r->head=D2_AUDIO_CAPACITY-3;
+ r->tail=r->head-(D2_AUDIO_CAPACITY-7);
+ check(d2_audio_write(r.get(),in.data(),512)==7);
+ r->tail+=D2_AUDIO_CAPACITY-7;
+ check(d2_audio_read(r.get(),out.data(),512)==7);
+ check(std::equal(in.begin(),in.begin()+7,out.begin()));
+ check(std::all_of(out.begin()+7,out.end(),[](int16_t x){return x==0;}));
  check(d2_audio_read(r.get(),out.data(),512)==0);for(auto n:out)check(n==0);
  unsigned wrote=0;while(d2_audio_write(r.get(),in.data(),512))wrote+=512;
  check(wrote==D2_AUDIO_CAPACITY);while(d2_audio_read(r.get(),out.data(),512)){}

@@ -12,7 +12,12 @@ static inline unsigned d2_audio_write(struct D2AudioRing* r,const int16_t* pcm,u
  uint32_t head=__atomic_load_n(&r->head,__ATOMIC_RELAXED),tail=__atomic_load_n(&r->tail,__ATOMIC_ACQUIRE);
  unsigned used=head-tail;if(used>D2_AUDIO_CAPACITY)return 0;
  if(n>D2_AUDIO_CAPACITY-used)n=D2_AUDIO_CAPACITY-used;
- for(unsigned i=0;i<n;++i)r->samples[(head+i)&(D2_AUDIO_CAPACITY-1)]=pcm[i];
+ if(n){
+  const unsigned start=head&(D2_AUDIO_CAPACITY-1), room=D2_AUDIO_CAPACITY-start;
+  const unsigned first=n<room?n:room;
+  memcpy(r->samples+start,pcm,first*sizeof(*pcm));
+  if(first<n)memcpy(r->samples,pcm+first,(n-first)*sizeof(*pcm));
+ }
  __atomic_store_n(&r->head,head+n,__ATOMIC_RELEASE);return n;
 }
 /* Queue depth belongs to the consumer clock, not render-frame elapsed time.
@@ -26,7 +31,12 @@ static inline unsigned d2_audio_read(struct D2AudioRing* r,int16_t* pcm,unsigned
  uint32_t tail=__atomic_load_n(&r->tail,__ATOMIC_RELAXED),head=__atomic_load_n(&r->head,__ATOMIC_ACQUIRE);
  unsigned ready=head-tail;if(ready>D2_AUDIO_CAPACITY)ready=0;
  unsigned count=n<ready?n:ready;
- for(unsigned i=0;i<count;++i)pcm[i]=r->samples[(tail+i)&(D2_AUDIO_CAPACITY-1)];
+ if(count){
+  const unsigned start=tail&(D2_AUDIO_CAPACITY-1), room=D2_AUDIO_CAPACITY-start;
+  const unsigned first=count<room?count:room;
+  memcpy(pcm,r->samples+start,first*sizeof(*pcm));
+  if(first<count)memcpy(pcm+first,r->samples,(count-first)*sizeof(*pcm));
+ }
  memset(pcm+count,0,(n-count)*sizeof(*pcm));
  __atomic_store_n(&r->tail,tail+count,__ATOMIC_RELEASE);
  if(count<n)__atomic_fetch_add(&r->underruns,1,__ATOMIC_RELAXED);
@@ -38,6 +48,10 @@ struct D2AudioEnvelope { int32_t last;unsigned gain; };
 #define D2_AUDIO_FADE (D2_AUDIO_RATE / 200u)
 static inline unsigned d2_audio_read_smooth(struct D2AudioRing* r,int16_t* pcm,unsigned n,struct D2AudioEnvelope* state) {
  unsigned count=d2_audio_read(r,pcm,n);
+ if(count==n && state->gain==D2_AUDIO_FADE){
+  if(n)state->last=pcm[n-1];
+  return count;
+ }
  for(unsigned i=0;i<n;++i){
   if(i<count){state->last=pcm[i];if(state->gain<D2_AUDIO_FADE)++state->gain;}
   else if(state->gain)--state->gain;
