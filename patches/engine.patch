@@ -564,7 +564,7 @@ index f13cba0..75600c7 100644
  // Palette-lookup blit: index 0 is transparent (skip), all other indices map
  // through the supplied palette to real RGBA. Signed dest so negative offsets
 diff --git a/apps/d2d/devctl_verbs.hpp b/apps/d2d/devctl_verbs.hpp
-index 8a9004a..bd7c2b5 100644
+index 8a9004a..8e76b32 100644
 --- a/apps/d2d/devctl_verbs.hpp
 +++ b/apps/d2d/devctl_verbs.hpp
 @@ -1,3 +1,4 @@
@@ -958,16 +958,18 @@ index 8a9004a..bd7c2b5 100644
      channel.on("state", [&](const std::vector<std::string>&) {
          return std::string("screen=") + screen_name(screen)
               + " save=" + std::to_string(csu.selected)
-@@ -677,6 +958,8 @@ void register_game_verbs(d2d::devctl::Channel& channel, Window& win, Screen& scr
+@@ -677,6 +958,10 @@ void register_game_verbs(d2d::devctl::Channel& channel, Window& win, Screen& scr
               + " cam=" + std::format("{:.2f},{:.2f}", town.player.x, town.player.y)
               + " walking=" + (town.player.walking ? "1" : "0") + " dir=" + std::to_string(town.player.dir)
               + " saves=" + std::to_string(scene ? scene->saves.size() : 0)
 +             + " merc_panel=" + (town.merc_open?"1":"0") + " merc_notice=" + std::to_string(town.view.merc_notice)
++             + " char_open=" + std::to_string(town.char_open)
++             + " tree_open=" + std::to_string(town.tree_open)
 +             + " inv=" + (town.inv_open ? "1" : "0")
               + " stash=" + (town.stash_open ? "1" : "0")
               + " cube=" + (town.cube_open ? "1" : "0")
               + " store=" + std::to_string(town.store.npc >= 0 ? town.store.vendor : -1) + " store_tab=" + std::to_string(town.store.tab)
-@@ -684,6 +967,11 @@ void register_game_verbs(d2d::devctl::Channel& channel, Window& win, Screen& scr
+@@ -684,6 +969,11 @@ void register_game_verbs(d2d::devctl::Channel& channel, Window& win, Screen& scr
               + " statpts=" + std::to_string(character.stats.get(d2d::d2s::kStatPts))
               + " str=" + std::to_string(character.stats.get(d2d::d2s::kStr))
               + " life=" + std::to_string(character.stats.fixed(d2d::d2s::kLife)) + "/" + std::to_string(character.stats.fixed(d2d::d2s::kMaxLife))
@@ -979,7 +981,7 @@ index 8a9004a..bd7c2b5 100644
               + " mana=" + std::to_string(character.stats.fixed(d2d::d2s::kMana)) + "/" + std::to_string(character.stats.fixed(d2d::d2s::kMaxMana))
               + " level=" + std::to_string(character.stats.get(d2d::d2s::kLevel)) + " exp=" + std::to_string(character.stats.get(d2d::d2s::kExp))
               + " pmode=" + (town.fight.pmode >= 0 ? kModeCode[town.fight.pmode] : "-")
-@@ -700,12 +988,22 @@ void register_game_verbs(d2d::devctl::Channel& channel, Window& win, Screen& scr
+@@ -700,12 +990,22 @@ void register_game_verbs(d2d::devctl::Channel& channel, Window& win, Screen& scr
                 }()
               + " skillpts=" + std::to_string(character.stats.get(d2d::d2s::kSkillPts))
               + " tree=" + (town.tree_open ? std::to_string(town.tree_tab) : "0")

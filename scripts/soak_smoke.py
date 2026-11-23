@@ -28,8 +28,11 @@ try:
  cmd('ping');frames(5);cmd('click 690 555');frames(15);assert state()['screen']=='ingame'
  for cycle in range(12):
   record={'cycle':cycle+1,'start':memory()}
-  for k,field in [('i','inv'),('t','tree'),('c','str'),('q','quest')]:
-   cmd('key '+k);frames(8);cmd('key Escape');frames(5)
+  for k,field in [('i','inv'),('t','tree_open'),('c','char_open'),('q','quest')]:
+   cmd('key '+k);frames(8)
+   if state()[field]!='1':raise RuntimeError(f'Cycle {cycle+1}: {field} did not open')
+   cmd('key Escape');frames(5)
+   if state()[field]!='0':raise RuntimeError(f'Cycle {cycle+1}: {field} did not close')
   # Visit maps through test setup, not a claim of completed campaign travel.
   level=[2,3,8][cycle%3];cmd(f'debug goto {level}');frames(90)
   record['level']=cmd('debug level');assert int(record['level'].split()[1])==level
