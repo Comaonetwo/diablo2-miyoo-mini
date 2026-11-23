@@ -18,7 +18,9 @@ int main(){
  auto copied=sprite;sprite.release_pixels();for(const auto& f:sprite.frames())check(f.pixels.empty());
  check(copied.frame(1,2).pixels[1]==12&&sprite.frame(1,2).pixels[1]==12);
  int tries=0;auto retry=d2d::dcc::Sprite::from_frame_loader(1,1,[&](auto,auto){if(!tries++)throw std::runtime_error("temporary read failure");return d2d::dcc::Frame{1,1,0,0,0,0,1,1,{7}};});
- try{retry.frame(0,0);check(false);}catch(const std::runtime_error&){}
+ bool failed=false;
+ try{retry.frame(0,0);}catch(const std::runtime_error&){failed=true;}
+ check(failed&&tries==1);
  check(retry.frame(0,0).pixels[0]==7&&tries==2);
  puts("PASS: lazy composite frames, bounded cache, palette, release/copy and failed-read retry");
 }
