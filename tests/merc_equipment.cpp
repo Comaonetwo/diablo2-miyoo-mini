@@ -36,11 +36,20 @@ int main(){
  cap.props.clear();data.rules.item_info["cap"].req_str=0;cap.quality=7;cap.unique_id=0;data.rules.unique_req={99};CHECK(merc_can_equip(data,h,worn,cap,1)==MercItemResult::Level);
  cap.quality=4;cap.identified=false;CHECK(merc_can_equip(data,h,worn,cap,1)==MercItemResult::Identify);cap=item("cap",11);
  std::optional<Item> held=cap;CHECK(merc_item_move(data,h,worn,held,1)==MercItemResult::Ok&&!held&&worn.size()==1&&worn[0].id==11);
- held=item("cap",12);CHECK(merc_item_move(data,h,worn,held,1)==MercItemResult::Ok&&held->id==11&&worn[0].id==12); // no inventory space needed for swap
+ held=item("cap",12);held->uid=0x52734;CHECK(merc_item_move(data,h,worn,held,1)==MercItemResult::Ok&&held->id==11&&worn[0].id==12); // no inventory space needed for swap
  CHECK(merc_item_move(data,h,worn,held,5)==MercItemResult::Slot&&held->id==11&&worn[0].id==12);
  h.merc_dead=true;CHECK(merc_item_move(data,h,worn,held,1)==MercItemResult::Dead&&held->id==11&&worn[0].id==12);h.merc_dead=false;
  h.merc_seed=0;CHECK(merc_item_move(data,h,worn,held,1)==MercItemResult::NoMerc);h.merc_seed=123;
  held.reset();CHECK(merc_item_move(data,h,worn,held,1)==MercItemResult::Ok&&held->id==12&&worn.empty());
+ // Take a mercenary helmet back onto a nonempty character inventory.
+ // Removing it from the merc and stowing it must preserve its unique ID.
+ data.rules.item_info["cap"].width=data.rules.item_info["cap"].height=2;
+ Item occupied=item("hp1",73);occupied.panel=item_panel::kInventory;occupied.location=item_location::kStored;
+ std::vector<Item> player_items{occupied};
+ stow_held(data,player_items,held);
+ CHECK(!held&&player_items.size()==2&&player_items.back().uid==0x52734&&player_items.front().id==73);
+ CHECK(player_items.back().location==item_location::kStored&&player_items.back().panel==item_panel::kInventory);
+ CHECK(player_items.back().column!=0||player_items.back().row!=0);
  // Existing item in the target slot cannot supply its own replacement's requirements.
  auto strength=item("cap",20);strength.props.push_back({kStr,0,50});strength.location=item_location::kEquipped;strength.slot=1;worn={strength};data.rules.item_info["cap"].req_str=100;
  CHECK(merc_can_equip(data,h,worn,item("cap",21),1)==MercItemResult::Strength);
