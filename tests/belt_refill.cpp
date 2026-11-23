@@ -22,5 +22,18 @@ int main(){
  items={item(40,"hp1",item_location::kBelt,0,12),item(41,"mp1",item_location::kBelt,0,6),item(42,"hp1",item_location::kStored,item_panel::kInventory,0)};
  check(pick(true)==40&&pick(false)==41);
  items.clear();check(pick(true)==-1&&pick(false)==-1);
+ // Exercise every physical column and row count after drinking from an
+ // upper slot. Refill must use the first hole in that column.
+ for(int boxes:{4,8,12,16})for(int used=0;used<boxes;++used){
+  items.clear();
+  for(int box=0;box<boxes;++box)if(box!=used)
+   items.push_back(item(100+box,"mp1",item_location::kBelt,0,box));
+  items.push_back(item(30,"hp1",item_location::kStored,item_panel::kCube,1));
+  items.push_back(item(31,"hp1",item_location::kStored,item_panel::kInventory,2));
+  check(d2d::rules::refill_belt(items,"hp1",used,boxes));
+  check(items.back().id==31&&items.back().column==used&&items.back().location==item_location::kBelt);
+  check(items[items.size()-2].panel==item_panel::kCube);
+  check(!d2d::rules::refill_belt(items,"hp1",used,boxes));
+ }
  std::puts("PASS: deterministic left/right edges, alternating controls, upper rows, bottom-first, shuffled storage, drink/shift and empty belt");
  std::puts("PASS: exact grade, column capacity, stash exclusion, identities and counts");}
