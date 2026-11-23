@@ -51,6 +51,19 @@ static void recovery_rules_test(){
  // Rate changes restart the clock, independent identities do not borrow time.
  recovery={};jav.quantity=1;jav.id=10;jav.flags=0;bag={jav};step(0);bag[0].props.back().value=20;step(500);step(5539);CHECK(bag[0].quantity==1);step(5540);CHECK(bag[0].quantity==2);bag[0].id=11;step(6000);step(11039);CHECK(bag[0].quantity==2);step(11040);CHECK(bag[0].quantity==3&&recovery.clocks.size()==1);
  std::puts("PASS item recovery rules: extra-stack caps, grid/pickup/shop/repair consistency, exact first/repeat delays, empty-stack reactivation, ethereal self-repair, no broken armor repair, rate/identity cleanup, no stall burst");
+ {
+  rule::Tables tables;auto armor=item("cap");armor.id=5;
+  armor.max_durability=10;armor.durability=7;armor.props={{252,0,100}};
+  rule::ItemRecovery clock;
+  const auto update=[&](std::uint32_t now){
+   clock.begin();const bool repaired=clock.update(tables,armor,now);clock.end();return repaired;
+  };
+  // The first repair is due 1040 ms later, across the unsigned timer wrap.
+  const std::uint32_t start=0u-1040u;
+  CHECK(!update(start)&&!update(UINT32_MAX)&&armor.durability==7);
+  CHECK(update(0)&&armor.durability==8&&!update(0));
+  CHECK(!update(4999)&&update(5000)&&armor.durability==9);
+ }
 }
 static void stone_skin_test(){
  rule::MonType type;type.diff[2].res={0,0,100,0,100,0};rule::UMods mods;
