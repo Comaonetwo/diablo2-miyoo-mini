@@ -3,11 +3,13 @@
 from pathlib import Path
 import os,subprocess,socket,json,re,shutil,time
 root=Path(__file__).resolve().parents[1];bundle=root/'outputs/test-saves-0.2.25';results=[]
+report_dir=root/'work/release-048'
+report_dir.mkdir(parents=True,exist_ok=True)
 binary=Path(os.environ.get('D2_TEST_BINARY',root/'work/build/probe/d2-desktop'))
 for fixture in json.loads((bundle/'manifest.json').read_text()):
  name=fixture['name'];user=root/f'work/runtime/routes-{name}-{os.getpid()}';(user/'save').mkdir(parents=True)
  for ext in ('d2s','qa'):shutil.copyfile(bundle/'save'/f'{name}.{ext}',user/'save'/f'{name}.{ext}')
- sock=f'/tmp/d2routes-{name}-{os.getpid()}.sock';log=(root/f'work/release-048/routes-{name}.log').open('w');p=None
+ sock=f'/tmp/d2routes-{name}-{os.getpid()}.sock';log=(report_dir/f'routes-{name}.log').open('w');p=None
  def cmd(line):
   with socket.socket(socket.AF_UNIX)as s:
    s.settimeout(120);s.connect(sock);s.sendall((line+'\n').encode());out=''
@@ -38,4 +40,4 @@ for fixture in json.loads((bundle/'manifest.json').read_text()):
  finally:
   if p and p.poll()is None:p.terminate();p.wait(timeout=30)
   Path(sock).unlink(missing_ok=True);log.close()
-(root/'work/release-048/qa-route-validation.json').write_text(json.dumps({'binary':str(binary),'physical_console':False,'results':results},indent=2)+'\n')
+(report_dir/'qa-route-validation.json').write_text(json.dumps({'binary':str(binary),'physical_console':False,'results':results},indent=2)+'\n')

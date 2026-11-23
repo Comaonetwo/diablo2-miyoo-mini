@@ -2,7 +2,13 @@
 """Build isolated QA fixtures through the engine's own commands/save writer."""
 from pathlib import Path
 import os,re,json,socket,subprocess,time,shutil,hashlib
-root=Path(__file__).resolve().parents[1];out=root/'outputs/test-saves-0.2.25';out.mkdir(exist_ok=True);logs=root/'work/release-048';data=root/'work/game-data'
+root=Path(__file__).resolve().parents[1]
+out=root/'outputs/test-saves-0.2.25'
+logs=root/'work/release-048'
+out.mkdir(parents=True,exist_ok=True)
+logs.mkdir(parents=True,exist_ok=True)
+(root/'work/runtime').mkdir(parents=True,exist_ok=True)
+data=root/'work/game-data'
 heroes=[
  dict(name='QAStart',ui=0,level=5,town=1,target=3,weapon='hax',right='Bash'),
  dict(name='QAActOne',ui=2,level=18,town=1,target=37,weapon='scm',right='Holy Fire'),

@@ -3,10 +3,12 @@
 from pathlib import Path
 import os,re,json,socket,subprocess,time,shutil
 root=Path(__file__).resolve().parents[1];data=root/'work/game-data';bundle=root/'outputs/test-saves-0.2.25';allresults=[]
+report_dir=root/'work/release-048'
+report_dir.mkdir(parents=True,exist_ok=True)
 for name,parts,expected in [('QAActTwo',[('msf',0,0),('vip',1,0)],'hst'),('QAActThree',[('qey',0,0),('qhr',1,0),('qbr',2,0),('qf1',0,1)],'qf2')]:
  user=root/f'work/runtime/cube-{name}-{os.getpid()}';(user/'save').mkdir(parents=True)
  for ext in ('d2s','qa'):shutil.copyfile(bundle/'save'/f'{name}.{ext}',user/'save'/f'{name}.{ext}')
- (user/'d2d.cfg').write_text('ui_scale=125\nreadable_font=1\nsharp_panel_text=1\n');sock=f'/tmp/d2cube-{name}-{os.getpid()}.sock';log=(root/f'work/release-048/cube-{name}.log').open('w');p=None;row={'hero':name}
+ (user/'d2d.cfg').write_text('ui_scale=125\nreadable_font=1\nsharp_panel_text=1\n');sock=f'/tmp/d2cube-{name}-{os.getpid()}.sock';log=(report_dir/f'cube-{name}.log').open('w');p=None;row={'hero':name}
  def cmd(line):
   with socket.socket(socket.AF_UNIX)as s:
    s.settimeout(120);s.connect(sock);s.sendall((line+'\n').encode());out=''
@@ -31,7 +33,7 @@ for name,parts,expected in [('QAActTwo',[('msf',0,0),('vip',1,0)],'hst'),('QAAct
   cmd('key I');frames();xy=cmd('debug itemat '+str(box)).split();cmd('move '+xy[1]+' '+xy[2]);frames();pad('x');assert 'cube=1'in cmd('state'),cmd('state');row['open_cube_with_Y']='PASS'
   for code,x,y in parts:
    id=id_for(code,1);cmd(f'cmd hand {id}');frames();cmd(f'cmd grid {x} {y} cube');frames();assert id_for(code,4)==id
-  cmd('move 244 337');frames();pad('a');frames(12);id_for(expected,4);row['recipe']=expected;row['transmute_with_B']='PASS';cmd('screenshot '+str(root/f'work/release-048/cube-{name}-result.png'))
+  cmd('move 244 337');frames();pad('a');frames(12);id_for(expected,4);row['recipe']=expected;row['transmute_with_B']='PASS';cmd('screenshot '+str(report_dir/f'cube-{name}-result.png'))
   if name=='QAActTwo':
    staff=id_for('hst',4);cmd(f'cmd hand {staff}');frames();cmd('cmd grid 0 0');frames();assert id_for('hst',1)==staff
    gems=[int(m)for m in re.findall(r'\[gcr loc=0 slot=0 q=\d+ panel=5 id=(\d+)',cmd('items'))];assert len(gems)==3
@@ -41,4 +43,4 @@ for name,parts,expected in [('QAActTwo',[('msf',0,0),('vip',1,0)],'hst'),('QAAct
  finally:
   if p and p.poll()is None:p.terminate();p.wait(timeout=30)
   log.close();Path(sock).unlink(missing_ok=True)
-(root/'work/release-048/cube-validation.json').write_text(json.dumps(allresults,indent=2)+'\n');print(json.dumps(allresults,indent=2))
+(report_dir/'cube-validation.json').write_text(json.dumps(allresults,indent=2)+'\n');print(json.dumps(allresults,indent=2))
