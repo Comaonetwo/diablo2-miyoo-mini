@@ -9,9 +9,14 @@ int main(){GameData d;auto& t=d.rules;t.types["gem"];t.types["gemy"].equiv[0]="g
  Item cap;cap.code="cap";cap.id=10;cap.uid=1234;cap.socketed=true;cap.sockets=1;cap.quality=2;cap.identified=true;cap.location=0;cap.panel=1;
  Item gem;gem.code="gcy";gem.id=11;gem.uid=5678;gem.simple=true;gem.identified=true;gem.location=4;
  std::vector<Item> items{cap};std::optional<Item> held=gem;
+ // Check the filler type with an EMPTY socket. A full socket would also
+ // reject a valid gem, masking regressions in the type check.
+ Item potion=gem;potion.code="hp1";held=potion;
+ CHECK(!d2d::rules::insert_socket(t,items[0],held));
+ CHECK(held&&held->uid==potion.uid&&held->code=="hp1"&&items[0].socketed_items.empty());
+ held=gem;
  CHECK(d2d::rules::insert_socket(t,items[0],held));CHECK(!held&&items.size()==1&&items[0].socketed_items.size()==1);CHECK(items[0].socketed_items[0].location==item_location::kSocketed);
  held=gem;CHECK(!d2d::rules::insert_socket(t,items[0],held));CHECK(held&&items[0].socketed_items.size()==1);
- Item wrong=gem;wrong.code="hp1";held=wrong;CHECK(!d2d::rules::insert_socket(t,items[0],held));CHECK(held->code=="hp1");
  cap.socketed=false;held=gem;CHECK(!d2d::rules::insert_socket(t,cap,held));CHECK(held);
  ItemTables tables;tables.stats.resize(512);for(auto& stat:tables.stats){stat.save_bits=16;stat.csv_bits=16;}tables.armor.insert("cap");Header h;h.name="SocketTest";h.level=1;Stats stats;stats.values[kLevel]=1;
  auto bytes=write_save({},h,stats,items,tables);auto loaded=parse_items(bytes,tables);CHECK(loaded.size()==1&&loaded[0].socketed_items.size()==1&&loaded[0].sockets==1);CHECK(loaded[0].uid==1234&&loaded[0].socketed_items[0].code=="gcy"&&loaded[0].socketed_items[0].location==item_location::kSocketed);
