@@ -15191,10 +15191,10 @@ index f0df332..38919a9 100644
          if (river)
              if (const auto found = std::ranges::find(river->npcs, d2d::rules::operate_fn::kHellforge, &Npc::operate_fn); found != river->npcs.end()) forge = &*found;
 diff --git a/components/install/install.cpp b/components/install/install.cpp
-index 7d7b68e..7da5b5c 100644
+index 7d7b68e..45b5d4c 100644
 --- a/components/install/install.cpp
 +++ b/components/install/install.cpp
-@@ -302,6 +302,17 @@ std::vector<std::string> windows_subkeys(Hive hive, std::string_view key) {
+@@ -302,6 +302,18 @@ std::vector<std::string> windows_subkeys(Hive hive, std::string_view key) {
  }  // namespace
  
  auto find_file(const fs::path& dir, std::string_view name) -> std::optional<fs::path> {
@@ -15203,6 +15203,7 @@ index 7d7b68e..7da5b5c 100644
 +        std::ifstream manifest(dir / "d2-discs.tsv");
 +        std::string line;
 +        while (std::getline(manifest, line)) {
++            if (!line.empty() && line.back() == '\r') line.pop_back();
 +            const auto tab = line.find('\t');
 +            if (tab != std::string::npos && iequals(line.substr(0, tab), name) &&
 +                line.substr(tab + 1).starts_with("d2disc:"))
@@ -18352,3 +18353,17 @@ index 0000000..621ce72
 + stats.values[d2d::d2s::kGold]+=withdraw?moved:-moved;stats.values[d2d::d2s::kGoldBank]+=withdraw?-moved:moved;return moved;
 +}
 +}
+diff --git a/tests/test_install.cpp b/tests/test_install.cpp
+index a09ce60..55380fd 100644
+--- a/tests/test_install.cpp
++++ b/tests/test_install.cpp
+@@ -158,2 +158,9 @@ int run() {
+     mpq(cfg_dir / "d2data.mpq");
++
++    const auto discs = root / "disc-manifest";
++    const std::string reference = "d2disc:2048:0:21:6144:/images/Disc One.iso";
++    for (const auto ending : {"\n", "\r\n", ""}) {
++        write(discs / "d2-discs.tsv", "d2data.mpq\t" + reference + ending);
++        assert(find_file(discs, "d2data.mpq") == fs::path(reference));
++    }
+     fs::create_directories(root / "empty");

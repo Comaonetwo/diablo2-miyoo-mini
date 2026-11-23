@@ -10,8 +10,9 @@ inline d2d::mpq::Stack open_data(const std::filesystem::path& dir, const std::fi
         if(std::filesystem::is_regular_file(direct)){stack.push(direct);continue;}
         std::ifstream manifest(dir/"d2-discs.tsv");std::string line;bool found=false;
         while(std::getline(manifest,line)){
+            if(!line.empty()&&line.back()=='\r')line.pop_back();
             const auto tab=line.find('\t');
-            if(line.substr(0,tab)==name){stack.push(line.substr(tab+1));found=true;break;}
+            if(tab!=std::string::npos&&line.substr(0,tab)==name){stack.push(line.substr(tab+1));found=true;break;}
         }
         if(!found)throw std::runtime_error(std::string("Missing ")+name);
     }
