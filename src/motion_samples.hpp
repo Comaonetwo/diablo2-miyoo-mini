@@ -17,7 +17,14 @@ public:
  static std::uint64_t key(Kind kind,std::uint64_t id){return (std::uint64_t(kind)<<56)|(id&0x00ffffffffffffffULL);}
  void begin(const void* level){level_=level;samples_.clear();}
  void add(std::uint64_t id,float x,float y){if(id&&samples_.size()<kMaxSamples)samples_.push_back({id,x,y});}
- void finish(){std::sort(samples_.begin(),samples_.end(),[](const Sample&a,const Sample&b){return a.key<b.key;});}
+ void finish(){
+  // Render IDs often arrive in order within each kind. Equal keys still
+  // take the original sort path so lookup picks the same sample as before.
+  const auto disorder=std::adjacent_find(samples_.begin(),samples_.end(),
+      [](const Sample& a,const Sample& b){return a.key>=b.key;});
+  if(disorder!=samples_.end())
+   std::sort(samples_.begin(),samples_.end(),[](const Sample& a,const Sample& b){return a.key<b.key;});
+ }
  std::size_t size()const{return samples_.size();}
  std::size_t bytes()const{return samples_.capacity()*sizeof(Sample);}
  std::array<float,2> at(const void* level,std::uint64_t id,float x,float y,float blend)const{
