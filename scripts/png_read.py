@@ -11,6 +11,9 @@ def read_png(path):
  channels=3 if colour==2 else 4;stride=w*channels;raw=zlib.decompress(b''.join(parts));pixels=[];prev=bytearray(stride)
  for y in range(h):
   f=raw[y*(stride+1)];row=bytearray(raw[y*(stride+1)+1:(y+1)*(stride+1)])
+  if f==0:  # Unfiltered bytes already are the reconstructed scanline.
+   pixels.append(row);prev=row
+   continue
   for x in range(stride):
    a=row[x-channels] if x>=channels else 0;b=prev[x];c=prev[x-channels] if x>=channels else 0
    if f==1:v=a
