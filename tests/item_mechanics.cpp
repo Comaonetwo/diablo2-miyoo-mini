@@ -35,6 +35,20 @@ static void rules_test(){
  std::puts("PASS: rune order/type/quality/socket count, one-time bonus, save lists, unsocket cleanup, shared effective requirements");
 }
 static void recovery_rules_test(){
+ {
+  rule::Tables tables;
+  for(auto [scroll,book]:{std::pair{"tsc","tbk"},std::pair{"isc","ibk"}}){
+   tables.item_base[book].max_stack=20;
+   auto tome=item(book);tome.location=item_location::kStored;tome.panel=item_panel::kInventory;
+   tome.quantity=19;tome.uid=71;
+   std::vector<Item> bag{tome};std::optional<Item> held=item(scroll);
+   CHECK(rule::put_in_grid(tables,bag,held,item_panel::kInventory,10,4,0,0));
+   CHECK(!held&&bag.size()==1&&bag.front().quantity==20&&bag.front().uid==71);
+   held=item(scroll);held->uid=89;
+   CHECK(!rule::put_in_grid(tables,bag,held,item_panel::kInventory,10,4,0,0));
+   CHECK(held&&held->uid==89&&bag.front().quantity==20&&bag.front().uid==71);
+  }
+ }
  rule::Tables t;t.item_base["jav"].stackable=true;t.item_base["jav"].max_stack=80;t.item_base["jav"].cost=10000;t.item_info["jav"].kind=2;t.item_info["jav"].type="thro";t.types["thro"].autostack=true;t.types["thro"].throwable=t.types["thro"].repairable=true;t.item_info["rin"].width=t.item_info["rin"].height=1;
  Item jav=item("jav");jav.id=1;jav.quantity=79;jav.props={{254,0,60}};CHECK(rule::total_max_stack(t,jav)==140);auto more=jav;more.props[0].value=1000;CHECK(rule::total_max_stack(t,more)==511);more.props[0].value=-1000;CHECK(rule::total_max_stack(t,more)==1);
  std::vector<Item> bag{jav};bag[0].location=item_location::kStored;bag[0].panel=item_panel::kInventory;auto source=jav;source.quantity=100;std::optional<Item> held=source;CHECK(rule::put_in_grid(t,bag,held,item_panel::kInventory,10,4,0,0)&&bag[0].quantity==140&&held&&held->quantity==39);
