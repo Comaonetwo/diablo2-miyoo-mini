@@ -73,31 +73,25 @@ inline void expand_rect(std::span<std::uint8_t> f,int sx,int sy,int sw,int sh,in
   for(int x=dx;x<dx+w;++x){for(int y=0;y<sh;++y)std::memcpy(column.data()+y*4,f.data()+((sy+y)*800+x)*4,4);for(int y=0;y<h;++y)std::memcpy(f.data()+((dy+y)*800+x)*4,column.data()+y*sh/h*4,4);}
  }
 }
-inline void large_panels(std::span<std::uint8_t> f,bool left,bool right,bool tree=false){
- if(left)expand_rect(f,80,60,320,432,0,0,400,540);
- if(right)expand_rect(f,400,60,320,tree?480:432,400,0,400,tree?600:540);
-}
 // Preserve old bool callers as mode 1; mode 2 crops a centered 480x360.
 inline int world_width(int mode){return mode==2?480:mode?640:800;}
-template<int source_group>
-inline void zoom_world_rows(std::span<std::uint8_t> frame) {
- constexpr int width = 800 * source_group / 5;
- constexpr int height = 600 * source_group / 5;
- constexpr int left = (800 - width) / 2;
- constexpr int top = (600 - height) / 2;
+template<int source_group,int output_width,int output_height,int left,int top,int dest_left>
+inline void expand_rows(std::span<std::uint8_t> frame) {
+ constexpr int width = output_width * source_group / 5;
+ constexpr int height = output_height * source_group / 5;
  constexpr int stride = 800 * 4;
  std::array<std::uint8_t, width * 4> row;
  const auto expand_row = [&](int y) {
   const int first = (y * 5 + source_group - 1) / source_group;
   const int end = ((y + 1) * 5 + source_group - 1) / source_group;
   const auto* source = frame.data() + (top + y) * stride + left * 4;
-  auto* output = frame.data() + first * stride;
+  auto* output = frame.data() + first * stride + dest_left * 4;
   // Near the centre, source and destination can share a scanline.
   if (first == top + y) {
    std::memcpy(row.data(), source, row.size());
    source = row.data();
   }
-  for (int group = 0; group < 800 / 5; ++group) {
+  for (int group = 0; group < output_width / 5; ++group) {
    auto* dest = output + group * 20;
    std::memcpy(dest, source, 4);
    if constexpr (source_group == 4) {
@@ -108,11 +102,25 @@ inline void zoom_world_rows(std::span<std::uint8_t> frame) {
    }
    source += source_group * 4;
   }
-  if (end == first + 2) std::memcpy(output + stride, output, stride);
+  if (end == first + 2) std::memcpy(output + stride, output, output_width * 4);
  };
  // Read from the outer edges towards the centre so unread rows stay intact.
- for (int y = 0; y < height / 2; ++y) expand_row(y);
- for (int y = height - 1; y >= height / 2; --y) expand_row(y);
+ constexpr int split = top * source_group / (5 - source_group);
+ static_assert(split >= 0 && split <= height);
+ for (int y = 0; y < split; ++y) expand_row(y);
+ for (int y = height - 1; y >= split; --y) expand_row(y);
+}
+template<int group>
+inline void zoom_world_rows(std::span<std::uint8_t> frame){
+ expand_rows<group,800,600,(800-800*group/5)/2,(600-600*group/5)/2,0>(frame);
+}
+inline void large_panels(std::span<std::uint8_t> frame,bool left,bool right,bool tree=false){
+ if(frame.size()!=800*600*4)return;
+ if(left)expand_rows<4,400,540,80,60,0>(frame);
+ if(right){
+  if(tree)expand_rows<4,400,600,400,60,400>(frame);
+  else expand_rows<4,400,540,400,60,400>(frame);
+ }
 }
 inline void zoom_world(std::span<std::uint8_t> frame, int mode=1) {
  if (frame.size() != 800 * 600 * 4 || mode == 0) return;
