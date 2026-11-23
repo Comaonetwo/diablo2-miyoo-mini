@@ -80,7 +80,9 @@ Arguments=""
    if p.is_file():z.write(p,p.relative_to(stage))
  for p in [zip_path,source_zip]:
   with zipfile.ZipFile(p) as z:assert z.testzip() is None
- (folder/'SHA256SUMS.txt').write_text(''.join(f'{sha(p)}  {p.name}\n' for p in [zip_path,source_zip]))
+ standalone_source=folder/archive.name
+ shutil.copy2(archive,standalone_source)
+ (folder/'SHA256SUMS.txt').write_text(''.join(f'{sha(p)}  {p.name}\n' for p in [zip_path,source_zip,standalone_source]))
  print('Player ZIP:',zip_path,flush=True)
 if __name__=='__main__':
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--export-source',type=Path);p.add_argument('--source-dir',type=Path);p.add_argument('--build-dir',type=Path,default=ROOT/'work/build/console');a=p.parse_args()
