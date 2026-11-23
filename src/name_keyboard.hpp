@@ -17,7 +17,17 @@ struct NameKeyboard {
  void show(std::string_view value){open=true;draft=value;notice.clear();result.reset();row=col=0;previous={};repeats={};}
  void append(std::string_view text){notice.clear();for(char c:text){const bool alpha=(c>='a'&&c<='z')||(c>='A'&&c<='Z');const bool mark=(c=='-'||c=='_'||c=='\'')&&!draft.empty()&&draft.find_first_of("'-_")==std::string::npos;if((alpha||mark)&&draft.size()<15)draft+=c;}}
  void erase(){notice.clear();if(!draft.empty())draft.pop_back();}
- bool valid()const {if(draft.size()<2||draft.size()>15)return false;const char c=draft.back();return (c>='a'&&c<='z')||(c>='A'&&c<='Z');}
+ bool valid()const {
+  if(draft.size()<2||draft.size()>15)return false;
+  bool separator=false;
+  for(std::size_t i=0;i<draft.size();++i){
+   const char c=draft[i];
+   if((c>='a'&&c<='z')||(c>='A'&&c<='Z'))continue;
+   if(separator||i==0||i+1==draft.size()||(c!='-'&&c!='_'&&c!='\''))return false;
+   separator=true;
+  }
+  return true;
+ }
  void accept(){if(valid()){result=draft;open=false;}else notice="Use 2-15 letters; a separator goes inside.";}
  std::string label(int r,int c)const {
   if(r==3)return c==0?(upper?"Lowercase":"Uppercase"):c==1?"Done":"Cancel";
