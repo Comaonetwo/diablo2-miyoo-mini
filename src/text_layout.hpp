@@ -9,7 +9,7 @@ namespace d2mini {
 struct TextLayout {int scale=100,line_height=0,line_step=0,width=0,height=0;bool fits=false;std::vector<std::string> lines;};
 inline TextLayout fit_text(const d2d::font::Font& font,std::string_view text,int width,int height,int requested,int minimum=75,bool wrap=true,bool break_words=true,int line_gap=3){
  TextLayout result;
- for(int scale=std::max(requested,minimum);scale>=minimum;scale-=5){
+ for(int scale=std::max(requested,minimum);;scale=std::max(minimum,scale-5)){
   const d2d::font::TextScaleScope scope(scale);TextLayout candidate;candidate.scale=scale;candidate.line_height=font.line_height();candidate.line_step=candidate.line_height+std::max(0,line_gap);
   std::string row,word;
   const auto emit_word=[&]{
@@ -24,6 +24,7 @@ inline TextLayout fit_text(const d2d::font::Font& font,std::string_view text,int
   for(const auto& line:candidate.lines)candidate.width=std::max(candidate.width,font.ink_width(line));
   candidate.height=candidate.lines.empty()?0:int(candidate.lines.size()-1)*candidate.line_step+candidate.line_height;
   candidate.fits=candidate.width<=width&&candidate.height<=height;result=std::move(candidate);if(result.fits)return result;
+  if(scale==minimum)break;
  }
  if(!wrap&&!result.lines.empty()){
   const d2d::font::TextScaleScope scope(result.scale);auto& line=result.lines.front();

@@ -65,6 +65,8 @@ int main()try{
  check(d2d::font::g_pending_panel_text.size()==2);d2d::font::cover_panel_text(false);
  check(d2d::font::g_pending_panel_text.size()==1&&d2d::font::g_pending_panel_text[0].transform.sx==400);d2d::font::draw_pending_panel_text(direct);
  const auto long_name=d2mini::fit_text(font,std::string(200,'A'),100,24,225,75,false);
+ const auto off_grid=d2mini::fit_text(font,std::string(200,'A'),100,24,103,75,false);
+ check(off_grid.scale==75&&off_grid.fits);
  check(long_name.fits&&long_name.width<=100&&long_name.lines.front().size()<200);
  std::puts("PASS: scaled metrics, glyph extent, framebuffer clipping, restore");return 0;
 }catch(const std::exception&e){std::fprintf(stderr,"%s\n",e.what());return 1;}
