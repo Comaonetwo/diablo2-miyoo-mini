@@ -12,5 +12,12 @@ int main(){
   assert(selected?pixels[0]==255:pixels[0]>20&&pixels[0]<130);
  }
  std::vector<std::uint8_t> frame(16*600*4,100);{const d2mini::LootLabelComposite blend(frame,16,{-20,-30,7,6},.5f,false);frame[0]=200;}assert(frame[0]>100&&frame[0]<200);
+ d2mini::LootFade from_zero;
+ assert(from_zero.step(0,true)==0);
+ assert(from_zero.step(150,true)==.5f);
+ d2mini::LootFade wrapped;
+ assert(wrapped.step(UINT32_MAX-149,true)==0);
+ assert(wrapped.step(0,true)==.5f);
+ assert(wrapped.step(150,true)==1);
  std::puts("PASS loot combat fade: 300 ms both directions, selected label readability, exact actor preservation, faded background and clipped labels");
 }

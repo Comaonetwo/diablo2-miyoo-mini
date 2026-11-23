@@ -11,8 +11,17 @@ namespace d2mini {
 inline std::uint8_t actor_pixel_alpha=255;
 struct ActorCoverageScope {std::uint8_t old;explicit ActorCoverageScope(bool protect):old(actor_pixel_alpha){actor_pixel_alpha=protect?254:255;}~ActorCoverageScope(){actor_pixel_alpha=old;}};
 struct LootFade {
- std::uint32_t last=0;float value=0;
- float step(std::uint32_t now,bool active){const auto dt=last?std::min(now-last,300u):0u;last=now;const float d=float(dt)/300.f;value=active?std::min(1.f,value+d):std::max(0.f,value-d);return value;}
+ std::uint32_t last=0;
+ float value=0;
+ bool started=false;
+ float step(std::uint32_t now,bool active) {
+  const auto dt=started ? std::min(now-last,300u) : 0u;
+  started=true;
+  last=now;
+  const float delta=float(dt)/300.f;
+  value=active ? std::min(1.f,value+delta) : std::max(0.f,value-delta);
+  return value;
+ }
 };
 // Blend only this label's small rectangle, preserving actual visible actor
 // pixels, including correct wall occlusion and selected-label protection.
