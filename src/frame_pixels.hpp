@@ -7,7 +7,7 @@
 namespace d2mini {
 #if D2MINI_NEON_FILTER_AVAILABLE
 namespace detail {
-[[gnu::noinline]] std::size_t restore_opaque_alpha_neon(std::span<std::uint8_t> rgba) {
+[[gnu::noinline]] inline std::size_t restore_opaque_alpha_neon(std::span<std::uint8_t> rgba) {
     const auto opacity = vreinterpretq_u8_u32(vdupq_n_u32(0xff000000u));
     const auto limit = rgba.size() & ~std::size_t{15};
     for (std::size_t offset = 0; offset < limit; offset += 16) {
