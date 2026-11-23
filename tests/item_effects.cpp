@@ -1312,6 +1312,19 @@ static void synthetic(){
  std::puts("PASS item event grouping, free casting, source filtering, aura stacking/range, inactive aura exclusion, merc poison/leech/LifeTap/speed and trap scaling");
 }
 int main(int argc,char**argv)try{synthetic();flat_reduction_cases();
+ {
+  GameData data;compact_pack_cases(data);
+  auto& info=data.rules.item_info["wide"];info.width=6;info.height=3;
+  auto& narrow=data.rules.item_info["tall"];narrow.width=5;narrow.height=4;
+  Item first;first.code="wide";first.location=item_location::kStored;
+  first.panel=item_panel::kInventory;first.column=2;first.row=1;first.uid=19;
+  Item second=first;second.code="tall";second.column=4;second.row=0;second.uid=29;
+  std::vector<Item> bag{first,second};
+  // Total area is 38/40, but the full-height item leaves only five columns.
+  CHECK(!d2mini::arrange_inventory(data.rules,bag));
+  CHECK(bag.size()==2&&bag[0].uid==19&&bag[0].column==2&&bag[0].row==1);
+  CHECK(bag[1].uid==29&&bag[1].column==4&&bag[1].row==0);
+ }
  if(argc>1){auto data=load_game_data(argv[1],std::filesystem::path(argv[1])/"LODPatch_114d.exe",3,false);CHECK(data);november_feedback_cases(*data);latest_feedback_cases(*data);reddit_firestorm_sound_cases(*data);breath_and_action_sound_cases(*data);attack_panel_cases(*data);missile_damage_function_cases(*data);animation_and_motion_cases(*data);compact_pack_cases(*data);state_group_health_cases(*data);cold_curse_enchant_cases(*data);shadow_passive_cases(*data);shared_trap_cap_cases(*data);summon_death_cases(*data);shadow_finisher_cases(*data);dragon_tail_cases(*data);shadow_affix_child_cases(*data);shadow_item_projectile_cases(*data);contagion_equipment_cases(*data);rabies_shadow_cases(*data);poison_item_cases(*data);socket_durability_cases(*data,argv[1]);summon_level_cases(*data);real_replenish_cases(*data);explicit_cast_cases(*data);ammo_fill_cases(*data);shop_fill_cases(*data);inferno_stream_cases(*data);shadow_flight_cases(*data);allied_aura_cases(*data);pickup_gamble_corpse_cases(*data);skill_completion_cases(*data);incoming_defense_cases(*data);inventory_continuation_cases(*data);broad_mechanics_cases(*data);friendly_recovery_cases(*data);flat_reduction_world_cases(*data);magic_lifetap_cases(*data);pet_curse_cases(*data);reflection_cases(*data);revived_cases(*data);World world(&*data,-1,-1);auto& f=world.fight;auto& c=world.character;c.character_class=3;c.stats.values[kLevel]=30;c.stats.values[kMaxLife]=c.stats.values[kLife]=256000;c.stats.values[kMaxMana]=25600;c.stats.values[kMana]=0;
   const auto* holy=f.skill_named("Holy Fire");CHECK(holy);const auto& ids=data->skills.class_ids[3];const auto at=std::ranges::find(ids,holy->id);CHECK(at!=ids.end());c.stats.skills[std::size_t(at-ids.begin())]=10;f.aura=0;f.update_fighters(0);CHECK(f.player_combat.elem[0].second==0);f.aura=holy->id;f.update_fighters(40);CHECK(f.player_combat.elem[0].second>0);f.aura=0;c.stats.skills.fill(0);
   const auto* meditation=f.skill_named("Meditation");CHECK(meditation);c.items={worn("cap",1,{{151,meditation->id,12}})};f.update_fighters(80);CHECK(f.psum[27]>0&&f.aura_sources.size()==1&&f.aura_sources[0].level==12);
