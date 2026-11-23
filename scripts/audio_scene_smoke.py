@@ -2,14 +2,11 @@
 """D-pad crossing from camp through the gate, after test-only placement nearby."""
 import json,os,re,socket,subprocess,time
 from pathlib import Path
+from smoke_control import command
 root=Path(__file__).resolve().parents[1];user=root/'work/runtime/audio-scene-031-user';user.mkdir(exist_ok=True)
 sock=f'/tmp/d2-launch-{os.getpid()}.sock';log=open(root/'work/audio-scene-031.log','w');p=None;out={'physical_console':False}
 def cmd(line):
- with socket.socket(socket.AF_UNIX) as s:
-  s.settimeout(60);s.connect(sock);s.sendall((line+'\n').encode());a=''
-  while not re.search(r'(?:^|\n)(ok|err)(?:\s|$)',a):a+=s.recv(65536).decode()
-  if re.search(r'(?:^|\n)err(?:\s|$)',a):raise RuntimeError(a)
-  return a
+ return command(sock,line)
 def state():return dict(re.findall(r'(\w+)=(.*?)(?= \w+=|$)',cmd('state').splitlines()[0]))
 def frames(n):
  goal=int(cmd('info').split('frame=')[1].split()[0])+n;t=time.monotonic()+60
@@ -31,7 +28,6 @@ try:
  assert re.search(r'requested=(\d+)',out['day'])[1]==re.search(r'requested=(\d+)',out['day_again'])[1],out
  out['rain_asset']=cmd('audio info 64');cmd('audio cue 64');out['cue_started']=cmd('audio status');assert 'sfx_looped=0' in out['cue_started'] and 'sfx=1' in out['cue_started'],out
  frames(380);out['cue_finished']=cmd('audio status');assert 'sfx=0' in out['cue_finished'] and 'sfx_bytes=0' in out['cue_finished'],out
- out['result']='PASS'
  cmd('quit');assert p.wait(timeout=15)==0;out['result']='PASS'
 finally:
  if p and p.poll() is None:p.terminate();p.wait(timeout=15)
