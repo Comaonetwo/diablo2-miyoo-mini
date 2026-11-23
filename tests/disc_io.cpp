@@ -40,6 +40,13 @@ int main(int argc, char** argv) try {
         check(std::memcmp(actual.data(), payload + at, 2111) == 0);
         check(FileStream_Read(stream, nullptr, actual.data(), 7));
         check(std::memcmp(actual.data(), payload + at + 2111, 7) == 0);
+        at = 6144 - actual.size();
+        check(FileStream_Read(stream, &at, actual.data(), actual.size()));
+        check(std::memcmp(actual.data(), payload + at, actual.size()) == 0);
+        check(!FileStream_Read(stream, nullptr, actual.data(), 1));
+        at = 0;
+        check(FileStream_Read(stream, &at, actual.data(), actual.size()));
+        check(std::memcmp(actual.data(), payload, actual.size()) == 0);
         at = 6140; check(!FileStream_Read(stream, &at, actual.data(), 5));
         check(!FileStream_Write(stream, nullptr, actual.data(), 1));
         check(!FileStream_SetSize(stream, 1));

@@ -33,7 +33,9 @@ bool read_disc(TFileStream* base, ULONGLONG* offset, void* buffer, DWORD count) 
     while (count) {
         const auto logical = s->start + pos;
         const auto within = logical % 2048;
-        const auto bytes = std::min<DWORD>(count, 2048 - within);
+        // A cooked ISO has adjacent payloads. Raw CD sectors have headers
+        // between payloads, so those reads still stop at the sector edge.
+        const auto bytes = s->stride == 2048 ? count : std::min<DWORD>(count, 2048 - within);
         const auto physical = logical / 2048 * s->stride + s->payload + within;
         ssize_t got;
         do { got = pread(s->fd, out, bytes, static_cast<off_t>(physical)); } while (got < 0 && errno == EINTR);
