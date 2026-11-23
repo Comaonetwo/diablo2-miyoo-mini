@@ -27,7 +27,11 @@ struct GoldPad {
  void choose(){if(row==4){if(col)accept();else open=false;}else if(row==3&&col==0)erase();else if(row==3&&col==2)all();else append(label(row,col));}
  void click(int x,int y){for(int r=0;r<5;++r)for(int c=0;c<columns(r);++c){const auto b=box(r,c);if(x>=b[0]&&x<b[0]+b[2]&&y>=b[1]&&y<b[1]+b[3]){row=r;col=c;choose();return;}}}
  void update(const std::array<bool,9>& held,float dt){
-  if(just_open){previous=held;just_open=false;return;}
+  if(just_open){
+   previous=held;
+   for(int i=0;i<4;++i)if(held[i])repeats[i]=.35f;
+   just_open=false;return;
+  }
   for(int i=0;i<4;++i){bool step=false;if(!held[i])repeats[i]=0;else if(!previous[i]){step=true;repeats[i]=.35f;}else if((repeats[i]-=dt)<=0){step=true;repeats[i]=.12f;}
    if(step){if(i<2){row=(row+(i?1:4))%5;col=std::min(col,columns(row)-1);}else col=(col+(i==2?columns(row)-1:1))%columns(row);}}
   if(held[5]&&!previous[5])open=false;else if(held[8]&&!previous[8])accept();else if(held[4]&&!previous[4])choose();
