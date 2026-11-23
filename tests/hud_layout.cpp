@@ -48,6 +48,10 @@ int main()try{
   for(const auto&p:l.quick){auto hit=l.native(p.target.x+2,p.target.y+2,false,false);check(hit.part==p.id);}
   for(int row=1;row<4;++row){auto p=l.popup(row);auto h=l.native(p.target.x+5,p.target.y+5,false,false,4);check(h.part==d2mini::HudPart::Popup&&p.source.contains(h.x,h.y));}
   check(l.native(400,200,false,false).part==d2mini::HudPart::World);
+  // The compact globe artwork starts above the native 800x600 HUD strip.
+  check(l.hovered_globe(86,495)==d2mini::HudPart::Life);
+  check(l.hovered_globe(717,495)==d2mini::HudPart::Mana);
+  check(l.hovered_globe(30,583)==d2mini::HudPart::Blank);
   check(l.native(400,599,false,false).part==d2mini::HudPart::Bars);
  }
  puts("PASS: single-row skills/belt, smaller globes, continuous bars, raised notifications and pointer mapping");return 0;

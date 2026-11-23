@@ -37,6 +37,14 @@ struct CompactHudLayout {
 
  }
  HudPiece popup(int row)const {return {HudPart::Popup,{421,560-row*32,125,32},{upper_x,top-row*popup_row_h-3,upper_w,popup_row_h}};}
+ HudPart hovered_globe(int x,int y)const {
+  const auto hit=native(x,y,false,false);
+  if(hit.y>=507&&hit.y<588){
+   if(hit.part==HudPart::Life&&hit.x>=29&&hit.x<110)return HudPart::Life;
+   if(hit.part==HudPart::Mana&&hit.x>=689&&hit.x<770)return HudPart::Mana;
+  }
+  return HudPart::Blank;
+ }
  HudHit native(int x,int y,bool stats,bool skills,int popup_rows=0)const {
   const auto hit=[&](const HudPiece&p){return HudHit{p.id,p.source.x+(x-p.target.x)*p.source.w/p.target.w,p.source.y+(y-p.target.y)*p.source.h/p.target.h};};
   for(int r=1;r<popup_rows;++r){auto p=popup(r);if(p.target.contains(x,y))return hit(p);}

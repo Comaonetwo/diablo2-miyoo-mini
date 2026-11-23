@@ -173,7 +173,8 @@ void draw_compact_hud(std::vector<std::uint8_t>& out,const Scene& s,const SkillB
    for(int j=b.y;j<b.y+b.h;++j)for(int i=b.x;i<b.x+b.w;++i)if((j<b.y+2||j>=b.y+b.h-2||i<b.x+2||i>=b.x+b.w-2)&&i>=0&&i<800&&j>=0&&j<600){auto*p=out.data()+(j*800+i)*4;p[0]=224;p[1]=190;p[2]=103;p[3]=255;}
   }
  }
- if(!g_vital_numbers&&mx>=29&&mx<110&&my>=507&&my<588){auto t=std::to_string(stats.values[d2d::d2s::kLife]>>8)+" / "+std::to_string(stats.values[d2d::d2s::kMaxLife]>>8);s.font.draw(out,800,600,pal,layout.pieces[0].target.w/2-s.font.measure(t)/2,layout.top-22,t);}
- if(!g_vital_numbers&&mx>=689&&mx<770&&my>=507&&my<588){auto t=std::to_string(stats.values[d2d::d2s::kMana]>>8)+" / "+std::to_string(stats.values[d2d::d2s::kMaxMana]>>8);s.font.draw(out,800,600,pal,800-layout.pieces[1].target.w/2-s.font.measure(t)/2,layout.top-22,t);}
+ const auto hovered=g_vital_numbers?HudPart::Blank:layout.hovered_globe(mx,my);
+ if(hovered==HudPart::Life){auto t=std::to_string(stats.values[d2d::d2s::kLife]>>8)+" / "+std::to_string(stats.values[d2d::d2s::kMaxLife]>>8);s.font.draw(out,800,600,pal,layout.pieces[0].target.w/2-s.font.measure(t)/2,layout.top-22,t);}
+ if(hovered==HudPart::Mana){auto t=std::to_string(stats.values[d2d::d2s::kMana]>>8)+" / "+std::to_string(stats.values[d2d::d2s::kMaxMana]>>8);s.font.draw(out,800,600,pal,800-layout.pieces[1].target.w/2-s.font.measure(t)/2,layout.top-22,t);}
 }
 }
