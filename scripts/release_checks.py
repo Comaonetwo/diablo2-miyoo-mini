@@ -66,9 +66,14 @@ for name,command in steps:
  start=time.monotonic();log=logdir/(name+'.log');env=dict(os.environ,D2_TEST_BINARY=str(build/'d2-desktop'),D2_TEST_TAG='release-'+key[:10]+'-'+name.split('.')[0])
  env['ASAN_OPTIONS']=env.get('ASAN_OPTIONS','detect_leaks=0')+':halt_on_error=1'
  env['UBSAN_OPTIONS']=env.get('UBSAN_OPTIONS','')+':halt_on_error=1:print_stacktrace=1'
- with log.open('w')as f:code=subprocess.run(command,cwd=r,env=env,stdout=f,stderr=subprocess.STDOUT,timeout=900).returncode
- result['steps'].append({'name':name,'exit_code':code,'seconds':round(time.monotonic()-start,3),'log':str(log.relative_to(r))})
- if code:break
+ try:
+  with log.open('w')as f:code=subprocess.run(command,cwd=r,env=env,stdout=f,stderr=subprocess.STDOUT,timeout=900).returncode
+ except subprocess.TimeoutExpired:
+  code=None
+ step={'name':name,'exit_code':code,'seconds':round(time.monotonic()-start,3),'log':str(log.relative_to(r))}
+ if code is None:step['timeout_seconds']=900
+ result['steps'].append(step)
+ if code!=0:break
 result['passed']=len(result['steps'])==len(steps)and all(x['exit_code']==0 for x in result['steps'])
 a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(result,indent=2)+'\n')
 if result['passed']:(cache/(key+'.json')).write_text(json.dumps(result,indent=2)+'\n')
