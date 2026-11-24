@@ -15,6 +15,16 @@ int main()try{
     lazy.release_pixels();check(reads==1);check(copy.frame(0,0).pixels==std::vector<std::uint8_t>({1,2})&&reads==2);
     auto moved=std::move(copy);check(moved.directions()==1&&moved.frames_per_direction()==2);
     check(moved.frames().size()==2&&reads==2);
+    // Switching retained menu cels may drop decoded pixels, but all cels
+    // must be reconstructible from the same file read.
+    for(unsigned i=0;i<12;++i){
+        const unsigned index=i%2;
+        moved.retain_frame(index);
+        const auto& frame=moved.frame(0,index);
+        check(frame.offset_x==int(index+3));
+        check(frame.pixels==std::vector<std::uint8_t>({std::uint8_t(index+1),std::uint8_t(index+2)}));
+        check(reads==2);
+    }
     int attempts=0;auto retry=d2d::dc6::Sprite::deferred([&]()->std::optional<std::vector<std::byte>>{if(++attempts==1)throw std::bad_alloc{};return bytes;});
     bool failed=false;try{retry.total_frames();}catch(const std::bad_alloc&){failed=true;}
     check(failed&&retry.frame(0,0).pixels.size()==2&&attempts==2);
