@@ -12,6 +12,18 @@ int main(){
   if(!a||a!=b||reads!=generation||a->width()!=1||a->height()!=1)throw std::runtime_error("deferred map reload/shared identity");
   alias.release_deferred();map.release_deferred(); // duplicate preset aliases are harmless
  }
+ int attempts=0;
+ auto retry=d2d::drlg::LazyMap::deferred([&]()->std::optional<std::vector<std::byte>>{
+  if(++attempts==1)throw std::bad_alloc{};
+  return bytes;
+ });
+ auto peer=retry;
+ bool failed=false;
+ try{(void)peer.get();}catch(const std::bad_alloc&){failed=true;}
+ if(!failed||attempts!=1)throw std::runtime_error("allocation failure must propagate");
+ const auto* recovered=retry.get();
+ if(!recovered||recovered->width()!=1||peer.get()!=recovered||attempts!=2)
+  throw std::runtime_error("aliases failed to share a retried map");
  auto encoded=d2d::drlg::LazyMap::encoded(bytes);const auto* saved=encoded.get();encoded.release_deferred();
  if(!saved||encoded.get()!=saved)throw std::runtime_error("encoded-only map must stay resident");
  d2d::ds1::Map borrowed(2,3,1,1);d2d::drlg::LazyMap ref(&borrowed);ref.release_deferred();
