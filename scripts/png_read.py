@@ -22,3 +22,14 @@ def read_png(path):
    row[x]=(row[x]+v)&255
   pixels.append(row);prev=row
  return w,h,channels,pixels
+
+def preview_rgb_rows(rows,channels):
+ """Nearest-neighbour 800x600 to 640x480 RGB for comparison screenshots."""
+ for y in range(480):
+  src=rows[y*5//4]
+  dst=bytearray(640*3)
+  # Each group of five source pixels contributes its first four.
+  for phase in range(4):
+   for c in range(3):
+    dst[phase*3+c::12]=src[phase*channels+c::5*channels]
+  yield dst
