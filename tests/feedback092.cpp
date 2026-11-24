@@ -5,11 +5,8 @@
 #include <stdexcept>
 using namespace d2d::game;using namespace d2d::d2s;
 #define CHECK(x) do{if(!(x))throw std::runtime_error("feedback092 line "+std::to_string(__LINE__)+": " #x);}while(0)
-int main(int argc,char**argv)try{
- if(argc<2)return 0;
- setenv("D2D_SERIAL_LOADING","1",1);
- auto data=load_game_data(argv[1],std::filesystem::path(argv[1])/"LODPatch_114d.exe",3,false);CHECK(data);auto& d=*data;
- World w(&d,-1,-1);auto& c=w.character;c.character_class=4;c.stats.values[kLife]=c.stats.values[kMaxLife]=256000;
+static void return_belt_cases(World& w){
+ auto& c=w.character;c.character_class=4;c.stats.values[kLife]=c.stats.values[kMaxLife]=256000;
  Item potion;potion.code="hp1";potion.id=123;potion.uid=456;potion.location=item_location::kBelt;potion.column=12;c.items={potion};
  auto bytes=encode(cmd::ReturnBelt{123});auto command=decode(bytes);CHECK(command&&std::get<cmd::ReturnBelt>(*command).item==123);
  w.apply(*command,1000);CHECK(c.items.size()==1&&c.items[0].location==item_location::kStored&&c.items[0].panel==item_panel::kInventory&&c.items[0].uid==456&&!w.held);
@@ -19,6 +16,15 @@ int main(int argc,char**argv)try{
  c.items={potion};w.held=copy;w.apply(cmd::ReturnBelt{123},1120);CHECK(c.items[0].location==item_location::kBelt&&w.held->uid==456);w.held.reset();
  c.stats.values[kLife]=0;w.fight.pmode=kModeDT;w.apply(cmd::ReturnBelt{123},1160);CHECK(c.items[0].location==item_location::kBelt);c.stats.values[kLife]=256000;w.fight.pmode=1;
  puts("PASS belt transfer: identity, protocol, upper row, repeated command, full inventory, held/dead guards");
+}
+int main(int argc,char**argv)try{
+ if(argc<2){
+  GameData fixture;fixture.inv_layout[4].cols=10;fixture.inv_layout[4].rows=4;
+  World world(&fixture,-1,-1);world.character.header.cls=4;return_belt_cases(world);return 0;
+ }
+ setenv("D2D_SERIAL_LOADING","1",1);
+ auto data=load_game_data(argv[1],std::filesystem::path(argv[1])/"LODPatch_114d.exe",3,false);CHECK(data);auto& d=*data;
+ World w(&d,-1,-1);return_belt_cases(w);
  int doors=0;
  for(int id:{26,27}){auto* l=d.level(id);w.arrive(l,28,1.3f,"test");w.fight.rooms_up(*l,28,1.3f,true);
  for(const auto& n:l->npcs)if(World::is_door(n.operate_fn)&&n.object_frames[0]){const auto& timing=d.npc_timing(n,"NU");CHECK(timing.frames==std::min<unsigned>(n.object_frames[0],timing.cof_frames));CHECK(timing.frames==1);++doors;}}
