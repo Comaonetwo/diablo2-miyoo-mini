@@ -8,6 +8,9 @@ def physical(source,dest):
  w,h,ch,rows=read_png(source);assert (w,h)==(800,600)
  raw=b''.join(rows);assert ch==4
  projected=subprocess.run([str(root/'work/release-040/frame-export')],input=raw,stdout=subprocess.PIPE,check=True).stdout
+ expected=640*480*3
+ if len(projected)!=expected:
+  raise ValueError(f'frame-export produced {len(projected)} bytes, expected {expected}')
  pixels=[projected[y*640*3:(y+1)*640*3]for y in range(480)]
  def chunk(kind,bytes):return struct.pack('>I',len(bytes))+kind+bytes+struct.pack('>I',zlib.crc32(kind+bytes)&0xffffffff)
  dest.write_bytes(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>2I5B',640,480,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(b''.join(b'\0'+row for row in pixels)))+chunk(b'IEND',b''))
