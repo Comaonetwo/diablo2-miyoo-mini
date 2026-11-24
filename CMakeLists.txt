@@ -63,6 +63,7 @@ add_executable(d2-andariel-poison-test tests/andariel_poison.cpp src/disc_stream
 target_link_libraries(d2-andariel-poison-test PRIVATE game)
 add_test(NAME andariel-poison-units COMMAND d2-andariel-poison-test "${CMAKE_SOURCE_DIR}/work/game-data")
 target_link_libraries(d2-npc-dialogue-test PRIVATE game)
+add_test(NAME movement-wire-flags COMMAND d2-npc-dialogue-test)
 add_test(NAME npc-dialogue-near-entrance COMMAND d2-npc-dialogue-test "${CMAKE_SOURCE_DIR}/work/game-data")
 target_link_libraries(d2-feedback093-test PRIVATE game)
 add_test(NAME object-and-sound-feedback COMMAND d2-feedback093-test "${CMAKE_SOURCE_DIR}/work/game-data")
