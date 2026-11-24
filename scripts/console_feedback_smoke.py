@@ -37,8 +37,8 @@ try:
  (user/'d2d.cfg').write_text('text_scale=200\nui_scale=100\ncompact_hud=1\n')
  start();assert 'text=200 ui=100' in cmd('port');shot('hud-compact')
  before='running=true' in cmd('port');cmd('pad back down');frames();pad('y');cmd('pad back up');frames();assert ('running=true' in cmd('port'))!=before;assert state()['automap']=='0';out['run_combo']='PASS'
- cmd('debug statpts 5');key('C');assert state()['char'] if 'char' in state() else True
- old=state();pad('a');new=state();assert int(new['str'])==int(old['str'])+1,(old,new)
+ cmd('debug statpts 5');key('C')
+ old=state();pad('a');new=state();assert int(new['str'])==int(old['str'])+1 and int(new['statpts'])==int(old['statpts'])-1,(old,new)
  pad('dpdown');old=state();pad('a');new=state();assert int(new['statpts'])==int(old['statpts'])-1,(old,new);assert new['str']==old['str'];shot('stats-dpad');out['stat_points_dpad']='PASS'
  key('Escape');key('T');shot('skill-tree-big-text');pad('dpdown');pad('dpright');shot('skill-tree-dpad');key('Escape')
  drop=int(cmd('debug give tsc').split('#')[1].split()[0]);cmd(f'cmd pickup {drop}');frames();key('I');rows=cmd('items');match=re.search(r'\[tsc .*? id=(\d+)',rows)
