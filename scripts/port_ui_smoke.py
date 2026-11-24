@@ -50,6 +50,8 @@ try:
  out['port_menu_scales_controls']='PASS';out['preferences']=(user/'d2d.cfg').read_text()
  # Draw town NPCs/modes from several parts of the camp before leaving.
  rows=[r.split(chr(9)) for r in cmd('npcs').splitlines()[:-1] if r.split(chr(9))[3]=='1']
+ assert rows,('no town NPCs available to exercise the cache',rows)
+ out['town_npcs_visited']=len(rows[:8])
  for npc in rows[:8]:
   cmd('debug warp '+str(float(npc[5])+1.5)+' '+str(float(npc[6])+1.5));frames(18)
  out['town_cache_after_visit']=cmd('memory')
