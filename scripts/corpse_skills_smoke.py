@@ -32,6 +32,7 @@ try:
  cmd('debug kill');frames(100)
  result['corpses']=cmd('monsters')
  def pets():return cmd('state').split('pets=')[1].split()[0]
+ def pet_count(value):return 0 if value=='-' else len(value.split(','))
  for skill in (70,95):
   before=pets();cmd('debug skill right '+str(skill));frames();assert ('rskill='+str(skill)+' ') in cmd('state')
   rows=[l.split('\t')for l in cmd('monsters').splitlines()if '\t' in l and l.split('\t')[6]=='DD']
@@ -39,8 +40,8 @@ try:
   for row in rows[:20]:
    cmd('debug warp '+str(float(row[1])-.5)+' '+row[2]);frames(3)
    cmd('pad y down');frames(3);cmd('pad y up');frames(18)
-   if len(pets().split(','))>(0 if before=='-' else len(before.split(','))):break
-  assert len(pets().split(','))>(0 if before=='-' else len(before.split(','))),(skill,cmd('state'),result)
+   if pet_count(pets())>pet_count(before):break
+  assert pet_count(pets())>pet_count(before),(skill,cmd('state'),result)
   result[str(skill)]={'before':before,'after':pets()}
  result['state']=cmd('state');cmd('quit');assert p.wait(timeout=30)==0;result['result']='PASS'
 finally:
