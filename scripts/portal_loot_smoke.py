@@ -31,12 +31,15 @@ try:
  for _ in range(18):give('cap',True)
  for _ in range(30):give('buc')
  frames(20);result['items_before']=cmd('items');cmd('debug warp 22.6 5.1');frames()
- for _ in range(int(os.environ.get('D2_PICK_ATTEMPTS','8'))):
+ attempts=int(os.environ.get('D2_PICK_ATTEMPTS','8'))
+ assert attempts>0,'at least one controller attempt is required'
+ blocked=os.environ.get('D2_EXPECT_BLOCKED','') not in ('','0')
+ for _ in range(attempts):
   pad('x');frames(12)
-  if not os.environ.get('D2_EXPECT_BLOCKED')and cmd('debug level').split()[1]=='1':break
+  if not blocked and cmd('debug level').split()[1]=='1':break
  result['after_x']=cmd('debug level');result['portal_entered']=result['after_x'].split()[1]=='1'
- if os.environ.get('D2_EXPECT_BLOCKED'):
-  assert not result['portal_entered'];result['baseline_loot_blocks_portal']='CONFIRMED'
+ if blocked:
+  assert result['after_x'].split()[1]=='13',result['after_x'];result['baseline_loot_blocks_portal']='CONFIRMED'
  else:
   assert result['portal_entered'],result['after_x']
   # Return through the town end; loot pile remains in the cave.
