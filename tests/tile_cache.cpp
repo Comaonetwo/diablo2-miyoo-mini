@@ -19,6 +19,15 @@ int main(){
  const auto* tile=data->tile_cache->archives.at("test").tiles().data();check(tile->pixel_storage()==0);
  std::vector<std::uint8_t> row;const auto* decoded=tile->row(0,row);std::vector<std::uint8_t> original(decoded,decoded+160);
  check(tile->pixel_storage()>0&&tile->subtile_flags[0]==0x27);
+ data->tile_cache->archives.emplace("next",d2d::dt1::Archive::from_lazy_stream(Stream{bytes}));
+ const auto& newer=data->tile_cache->archives.at("next").tiles().front();
+ newer.row(0,row);tile->last_draw=4;newer.last_draw=5;
+ const auto budget=newer.pixel_storage();
+ data->trim_tile_pixels(budget+tile->pixel_storage());
+ check(newer.pixel_storage()==budget&&tile->pixel_storage()>0);
+ data->trim_tile_pixels(budget);
+ check(tile->pixel_storage()==0&&newer.pixel_storage()==budget);
+ check(std::memcmp(tile->row(0,row),original.data(),160)==0);
  for(int i=0;i<40;++i){data->trim_tile_pixels(0);check(tile->pixel_storage()==0&&tile->subtile_flags[0]==0x27);check(std::memcmp(tile->row(0,row),original.data(),160)==0);check(tile==data->tile_cache->archives.at("test").tiles().data());}
  puts("PASS: zero-budget eviction/reload keeps tile addresses, collision and exact pixels through 40 cycles");
 }
