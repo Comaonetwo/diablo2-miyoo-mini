@@ -18077,10 +18077,10 @@ index 0000000..517585f
 +}
 diff --git a/apps/d2d/town_automap.hpp b/apps/d2d/town_automap.hpp
 new file mode 100644
-index 0000000..d420215
+index 0000000..daa21d0
 --- /dev/null
 +++ b/apps/d2d/town_automap.hpp
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,25 @@
 +// SPDX-License-Identifier: GPL-3.0-or-later
 +#pragma once
 +#include <array>
@@ -18097,6 +18097,7 @@ index 0000000..d420215
 +    const int y=(cx+cy)*4-rows*h/2-(lut?-81:-50);
 +    constexpr std::array<int,11> skip{0,10,15,16,19,20,25,30,35,36,39};
 +    std::vector<TownMapCell> out;
++    out.reserve(lut?16:4); // Both Lut Gholein layouts fit in 16 cells.
 +    int cel=lut&&file!=1?20:0;
 +    for(int row=0;row<rows;++row)for(int col=0;col<cols;++col,++cel){
 +        bool blank=false;if(lut)for(int i:skip)blank|=cel==i;
