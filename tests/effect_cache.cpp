@@ -6,9 +6,17 @@
 #include <stdexcept>
 #define CHECK(x) do{if(!(x))throw std::runtime_error(#x);}while(0)
 int main(int argc,char**argv)try{
- if(argc!=2){puts("SKIP: owner resources required");return 0;}
- auto data=d2d::game::load_game_data(argv[1],std::filesystem::path(argv[1])/"LODPatch_114d.exe",3,false);CHECK(data);
  CHECK(d2mini::effect_key("Expansion/ICEBolt")=="expansion\\icebolt");
+ for(auto name:{"IceBreakLargeMelt","ICEBREAKSMALL"}){
+  const auto policy=d2mini::effect_directions(d2mini::effect_key(name));
+  CHECK(policy.count==4&&policy.pixels==512*1024);
+ }
+ const auto bolt=d2mini::effect_directions(d2mini::effect_key("CHARGEDBOLT"));
+ const auto other=d2mini::effect_directions("unknown");
+ CHECK(bolt.count==32&&bolt.pixels==768*1024&&other.count==2&&other.pixels==0);
+ if(argc!=2)return 0;
+ auto data=d2d::game::load_game_data(argv[1],std::filesystem::path(argv[1])/"LODPatch_114d.exe",3,false);CHECK(data);
+
  CHECK(d2mini::effect_key(data->missiles.at("icebolt").cel_file)==d2mini::effect_key(data->missiles.at("frozenorbbolt").cel_file));
  int checked=0;for(auto name:{"chargedbolt","nova","frostnova","fireball","hydra","icebolt","teeth","icebreaksmall","icebreaklarge","firewall","diablight"}){
   const auto& info=data->missiles.at(name);const auto key=d2mini::effect_key(info.cel_file);auto raw=data->mpqs.read(std::string(R"(data\global\missiles\)")+key+".dcc");

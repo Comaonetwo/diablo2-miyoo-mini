@@ -75,6 +75,7 @@ add_test(NAME fixed-walking-links COMMAND d2-walk-links-test "${CMAKE_SOURCE_DIR
 add_executable(d2-effect-cache-test tests/effect_cache.cpp src/disc_stream.cpp)
 target_include_directories(d2-effect-cache-test PRIVATE src)
 target_link_libraries(d2-effect-cache-test PRIVATE game dcc)
+add_test(NAME effect-cache-policy COMMAND d2-effect-cache-test)
 add_test(NAME effect-cache-bound COMMAND d2-effect-cache-test "${CMAKE_SOURCE_DIR}/work/game-data")
 add_executable(d2-dcc-retry-test tests/dcc_retry.cpp src/disc_stream.cpp)
 target_include_directories(d2-dcc-retry-test PRIVATE src)
