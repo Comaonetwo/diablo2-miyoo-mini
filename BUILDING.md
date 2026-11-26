@@ -38,6 +38,16 @@ python3 scripts/retain_console_symbols.py
 
 This route requires Git and network access. Dependency commits are fixed in `dependencies.json`; existing checkouts with a different revision are preserved and rejected rather than reset automatically.
 
+## Running desktop tests without game data
+
+After building the native desktop test executables, run the following from the build directory:
+
+```sh
+ctest -LE '^game-data$' --output-on-failure
+```
+
+To list the tests that use your own game files, run `ctest -N -L '^game-data$'`. Those tests read from `work/game-data/` in the source tree. Running `ctest` without a label filter selects the complete suite.
+
 ## Packaging and validation
 
 `python3 scripts/package_release.py --source-dir /path/to/clean-export --build-dir /path/to/clean-export/work/build/console` creates a clean release folder and ZIP under `outputs/releases/<version>/`, including corresponding source. It never reads or installs to an SD card and never packages MPQs, original executables, patch installers, player saves or runtime logs. The separately attributed optional Ports artwork is included.
