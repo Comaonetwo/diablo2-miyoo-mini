@@ -69,8 +69,9 @@ try:
  end=time.monotonic()+180
  while not Path(sock).exists():assert p.poll()is None and time.monotonic()<end;time.sleep(.1)
  cmd('ping');frames(10);cmd('click 690 555');frames(30);assert 'screen=ingame'in state(),state()
- assert field('res')=='0,0'and field('rescap')=='75,75'and field('cure_until')=='0,0',state();result['not_baked_into_save']='PASS';result['result']='PASS'
+ assert field('res')=='0,0'and field('rescap')=='75,75'and field('cure_until')=='0,0',state();result['not_baked_into_save']='PASS'
  cmd('quit');assert p.wait(timeout=30)==0
+ result['result']='PASS'
 finally:
  if p and p.poll()is None:p.terminate();p.wait(timeout=30)
  log.close();Path(sock).unlink(missing_ok=True);(root/f'work/release-audit-042/{tag}-result.json').write_text(json.dumps(result,indent=2)+'\n')
