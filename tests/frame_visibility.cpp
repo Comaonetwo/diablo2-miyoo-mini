@@ -5,6 +5,22 @@
 #include <vector>
 #include <cstdio>
 int main(){std::mt19937 rng(104108);unsigned bodies=0,shadows=0;
+ {
+  const d2mini::WorldOcclusionScope outer({40,30,80,90});
+  const auto spans=[](){
+   std::vector<std::pair<int,int>> result;
+   d2mini::world_occlusion.visible(0,100,40,[&](int a,int b){result.emplace_back(a,b);});
+   return result;
+  };
+  const std::vector<std::pair<int,int>> around_hud{{0,40},{80,100}};
+  if(spans()!=around_hud)return 4;
+  {
+   d2mini::WorldOcclusion cropped;cropped.clip_left=12;cropped.clip_right=45;
+   const d2mini::WorldOcclusionScope inner(cropped);
+   if(spans()!=std::vector<std::pair<int,int>>{{12,45}})return 5;
+  }
+  if(spans()!=around_hud)return 6;
+ }
  for(int i=0;i<1200;++i){const int w=1+rng()%150,h=1+rng()%230,bx=int(rng()%201)-100,by=int(rng()%151)-130,ax=int(rng()%451)-150,ay=int(rng()%451)-150;
   d2mini::WorldOcclusion clip;if(i%3==1){clip.clip_left=10;clip.clip_top=5;clip.clip_right=95;clip.clip_bottom=90;}else if(i%3==2)clip={40,70,110,103};
   const d2mini::WorldOcclusionScope scope(clip);
