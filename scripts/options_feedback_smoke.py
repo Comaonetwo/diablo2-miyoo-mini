@@ -42,9 +42,13 @@ try:
  cmd('click 400 200');frames();out['cfg_after_light']=(user/'d2d.cfg').read_text();assert 'fast_render = 0' in out['cfg_after_light'],out
  key('Escape');key('F10');assert 'fast=0' in cmd('port');key('Escape')
  # Back to safe town, map stays frozen while port menu cycles opacity.
- cmd('debug automap');frames();key('Tab');frames();shot('map-100')
+ def map_shot(opacity):
+  snapshot=state()
+  assert int(snapshot['automap'])>0,('automap has no visible cells',opacity,snapshot)
+  shot('map-'+str(opacity))
+ cmd('debug automap');frames();key('Tab');frames();map_shot(100)
  for expected in (25,50,75,100):
-  change(7);text=(user/'d2d.cfg').read_text();assert f'map_opacity = {expected}' in text,text;shot('map-'+str(expected))
+  change(7);text=(user/'d2d.cfg').read_text();assert f'map_opacity = {expected}' in text,text;map_shot(expected)
  menu(13);key('Return');shot('controls');key('Escape');key('Escape')
  cmd('key C');cmd('key I');frames(5);shot('panels-final');key('Escape')
  # First-party roster screen at Big; save/reload still uses normal exit.
