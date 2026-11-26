@@ -6,19 +6,20 @@ from pathlib import Path
 import re
 import socket
 import subprocess
+import tempfile
 import time
 
 root = Path(__file__).resolve().parents[1]
 runtime = root / "work/runtime"
-user = runtime / "smoke-user"
-user.mkdir(exist_ok=True)
+runtime.mkdir(parents=True,exist_ok=True)
+user = Path(tempfile.mkdtemp(prefix="smoke-user-",dir=runtime))
 name = "Mini" + "".join(chr(65 + int(c)) for c in str(os.getpid()))
 sock = f"/tmp/d2mm-{os.getpid()}.sock"
 env = dict(os.environ, D2D_USER_DIR=str(user), D2_PATCH_INSTALLER=str(Path(os.environ["D2_PATCH_INSTALLER"])))
 binary = Path(os.environ.get("D2_TEST_BINARY", root / "work/build/probe/d2-desktop"))
 data_dir = Path(os.environ.get("D2_TEST_DATA", runtime))
 log = open(root / "work/desktop-smoke.log", "w")
-result = {"name": name, "tests": [], "human_playthrough": False, "mini_runtime_test": False}
+result = {"name": name, "user_dir": str(user), "tests": [], "human_playthrough": False, "mini_runtime_test": False}
 
 def cmd(line):
     with socket.socket(socket.AF_UNIX) as client:
