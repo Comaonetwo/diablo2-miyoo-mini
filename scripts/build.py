@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
@@ -30,11 +31,14 @@ for name in needed:
     if not folder.exists():
         if not args.prepare:
             parser.error(f"Missing {name}; use --prepare")
-        folder.mkdir(parents=True)
-        run("git", "init", folder)
-        run("git", "remote", "add", "origin", dep["url"], cwd=folder)
-        run("git", "fetch", "--depth", "1", "origin", dep["revision"], cwd=folder)
-        run("git", "checkout", "--detach", "FETCH_HEAD", cwd=folder)
+        folder.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=folder.parent) as staging:
+            checkout = Path(staging) / "checkout"
+            run("git", "init", checkout)
+            run("git", "remote", "add", "origin", dep["url"], cwd=checkout)
+            run("git", "fetch", "--depth", "1", "origin", dep["revision"], cwd=checkout)
+            run("git", "checkout", "--detach", "FETCH_HEAD", cwd=checkout)
+            checkout.rename(folder)
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=folder, text=True).strip()
     if revision != dep["revision"]:
         parser.error(f"Wrong revision of {name}: {revision}; preserving checkout")
