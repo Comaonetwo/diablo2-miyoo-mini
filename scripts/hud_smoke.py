@@ -64,7 +64,8 @@ try:
  click(*centre(9));assert state()['tree']=='1',state();key('Escape');out['raised_notifications']='PASS'
  before=cmd('port');cmd('pad back down');frames(2);cmd('pad y down');frames(2);cmd('pad y up');cmd('pad back up');frames(4);assert ('running=true' in before)!=('running=true' in cmd('port'));out['run_combo']='PASS'
  click(*centre(6));assert state()['picker']=='1',state();shot('hud-skill-picker');cmd('pad dpdown down');frames(4);cmd('pad dpdown up');frames(3);cmd('pad dpup down');frames(4);cmd('pad dpup up');frames(3);cmd('pad a down');frames(4);cmd('pad a up');frames(4);assert state()['picker']=='0',state();out['skill_hitbox']='PASS'
- before=state()['cam'];click(110,500);assert state()['cam']==before;out['globe_does_not_walk']='PASS'
+ before=state();assert before['walking']=='0',before
+ click(110,500);after=state();assert after['walking']=='0' and after['cam']==before['cam'],(before,after);out['globe_does_not_walk']='PASS'
  cmd('debug statpts 0');cmd('debug skillpts 0');cmd('move 400 300');frames(4);shot('hud-compact')
  # Original HUD selector is independent of the interface scale.
  key('F10');key('Down');key('Down');key('Right');assert 'hud=original' in cmd('port');shot('hud-settings-original');key('Escape');shot('hud-original')
