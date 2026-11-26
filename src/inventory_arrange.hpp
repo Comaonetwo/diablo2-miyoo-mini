@@ -18,6 +18,8 @@ template<class Tables,class Items> bool arrange_inventory(const Tables& rules,It
  // approximately square instead of spanning all ten inventory columns.
  int square=1;while(square*square<area)++square;
  const int first_width=std::min(cols,std::max({min_width,(area+rows-1)/rows,square}));
+ std::vector<bool> used(std::size_t(cols*rows));
+ std::vector<std::array<int,2>> positions;positions.reserve(order.size());
  for(int width=first_width;width<=cols;++width)for(int height=std::max(min_height,(area+width-1)/width);height<=rows;++height)for(int strategy=0;strategy<3;++strategy){
   std::stable_sort(order.begin(),order.end(),[&](const auto&a,const auto&b){
    if(strategy==0&&a.w*a.h!=b.w*b.h)return a.w*a.h>b.w*b.h;
@@ -25,7 +27,7 @@ template<class Tables,class Items> bool arrange_inventory(const Tables& rules,It
    if(strategy==2&&items[a.index].code!=items[b.index].code)return items[a.index].code<items[b.index].code;
    if(a.w!=b.w)return a.w>b.w;return a.index<b.index;
   });
-  std::vector<bool> used(std::size_t(cols*rows));std::vector<std::array<int,2>> positions;bool complete=true;
+  std::fill(used.begin(),used.end(),false);positions.clear();bool complete=true;
   for(const auto&e:order){bool found=false;
    for(int y=0;y+e.h<=height&&!found;++y)for(int x=0;x+e.w<=width&&!found;++x){bool free=true;for(int j=0;j<e.h;++j)for(int i=0;i<e.w;++i)free=free&&!used[std::size_t((y+j)*cols+x+i)];if(!free)continue;
     for(int j=0;j<e.h;++j)for(int i=0;i<e.w;++i)used[std::size_t((y+j)*cols+x+i)]=true;positions.push_back({x,y});found=true;
