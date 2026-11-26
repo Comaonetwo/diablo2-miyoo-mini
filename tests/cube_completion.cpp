@@ -9,6 +9,14 @@
 using namespace d2d::game;using namespace d2d::d2s;namespace rule=d2d::rules;
 #define CHECK(x) do{if(!(x))throw std::runtime_error("cube completion line "+std::to_string(__LINE__));}while(false)
 int main(int argc,char**argv)try{
+ {
+  Header hero;hero.status=0x20;hero.progression=5;hero.difficulty={0x83,1,0};hero.map_id=90210;
+  const auto original=hero.difficulty;
+  CHECK(!select_difficulty(hero,2)&&hero.map_id==90210&&hero.difficulty==original);
+  CHECK(select_difficulty(hero,0)&&hero.map_id==90210&&hero.difficulty==original);
+  CHECK(select_difficulty(hero,1)&&hero.map_id==0&&hero.active_act()==1);
+  CHECK(select_difficulty(hero,0)&&hero.active_act()==3&&hero.difficulty==original);
+ }
  Header h;h.status=0x20;h.map_id=123;h.difficulty[0]=0x83;CHECK(unlocked_difficulty(h)==0&&!select_difficulty(h,1));h.progression=5;CHECK(unlocked_difficulty(h)==1&&select_difficulty(h,1)&&h.active_difficulty()==1&&h.active_act()==0&&h.map_id==0&&h.difficulty[0]==3);h.progression=10;CHECK(select_difficulty(h,2));h.status=0;h.progression=4;CHECK(unlocked_difficulty(h)==1);h.progression=0;h.quests[0][26*2]|=1;CHECK(unlocked_difficulty(h)==1);h.status=0x20;CHECK(unlocked_difficulty(h)==0);
  rule::Tables t;t.types["armo"];t.item_info["cap"].type="armo";t.item_info["cap"].kind=1;t.item_base["cap"].minac=3;t.item_base["cap"].maxac=5;t.item_base["cap"].durability=12;t.item_info["xap"]=t.item_info["cap"];t.item_base["xap"].minac=50;t.item_base["xap"].maxac=60;t.item_base["xap"].durability=20;t.properties["life"]={{1,kMaxLife,0}};
  t.prefixes.resize(8);t.suffixes.resize(8);for(int i=1;i<8;++i)for(bool pre:{false,true}){auto& a=pre?t.prefixes[i]:t.suffixes[i];a.spawnable=a.rare=true;a.frequency=1;a.itypes={"armo"};a.group=i+(pre?100:0);a.mods={{"life","",i,i}};}
