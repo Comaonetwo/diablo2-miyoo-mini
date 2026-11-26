@@ -23,12 +23,13 @@ for tag,binary in [('016',root/'work/baseline-0.2.16/d2-desktop'),('017',root/'w
   while not Path(sock).exists():assert p.poll() is None and time.monotonic()<t;time.sleep(.1)
   cmd('ping');frames(10)
   for level in (2,8,2,3,2):
-   cmd(f'debug goto {level}');frames(6);dims=cmd('debug level').split();w,h=map(int,dims[4:6]);grid=cmd('debug grid').splitlines()[:-1]
+   cmd(f'debug goto {level}');frames(6);dims=cmd('debug level').split();assert int(dims[1])==level,(level,dims);w,h=map(int,dims[4:6]);grid=cmd('debug grid').splitlines()[:-1]
    spots=[]
    for y in range(5,h-3,8):
     xs=range(5,w-3,8) if (y//8)%2 else reversed(range(5,w-3,8))
     for x in xs:
      spots.append((x+.5,y+.5))
+   assert spots,('no exploration samples',level,w,h)
    for i,(x,y) in enumerate(spots):
     cmd(f'debug warp {x} {y}');frames(3)
     m={k:int(v) for k,v in re.findall(r'(\w+)=(\d+)',cmd('memory'))};m.update(level=level,x=x,y=y);run['samples'].append(m)
