@@ -78,7 +78,8 @@ try:
  cmd('pad back down');pad('rightstick');cmd('pad back up');frames(3);assert state()['quest']=='1';shot('quest-controller');key('Escape')
  out['controller_skill_tree_and_quests']='PASS'
  out['final_memory']=cmd('memory');frames(30);cmd('quit');assert p.wait(timeout=20)==0
- pcm=array.array('h');pcm.frombytes(capture.read_bytes());out['audio']={'samples':len(pcm),'nonzero':sum(x!=0 for x in pcm),'peak':max(map(abs,pcm),default=0)};assert out['audio']['nonzero']>10000
+ pcm=array.array('h');pcm.frombytes(capture.read_bytes());out['audio']={'samples':len(pcm),'nonzero':sum(x!=0 for x in pcm),'peak':max(map(abs,pcm),default=0),'above_noise':sum(abs(x)>32 for x in pcm)}
+ assert out['audio']['above_noise']>10000 and out['audio']['peak']>500,out['audio']
  text=(root/'work/feedback-037.log').read_text();assert 'music stream ' in text;assert 'bad_alloc' not in text and 'build failed' not in text
  out['music_streams']=re.findall(r'music stream .*',text);out['result']='PASS'
 finally:
