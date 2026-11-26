@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <span>
 namespace d2mini {
 // Bounded sparse color accents on the already lit world, before HUD/panels.
@@ -19,9 +20,14 @@ struct ColoredLights {
  void apply(std::span<std::uint8_t> f,int width,int height)const{
   if(f.size()!=std::size_t(width)*height*4)return;
   for(unsigned i=0;i<count;++i){const auto& l=lamps[i];const int rr=l.r*l.r,scale=24*65536/rr;
+   // The fixed-point attenuation is in [0,24]. Every pixel in a lamp
+   // uses the same RGB contribution at a given attenuation.
+   std::array<std::array<std::uint8_t,3>,25> tint;
+   for(int a=0;a<=24;++a)for(int c=0;c<3;++c)tint[a][c]=std::uint8_t(l.rgb[c]*a>>8);
    for(int y=std::max(0,l.y-l.r/2);y<std::min(height,l.y+l.r/2+1);++y){const int yy=2*(y-l.y),base=rr-yy*yy;
     for(int x=std::max(0,l.x-l.r);x<std::min(width,l.x+l.r+1);++x){const int dx=x-l.x,d=base-dx*dx;if(d<=0)continue;auto*p=f.data()+(std::size_t(y)*width+x)*4;if(!(p[0]|p[1]|p[2]))continue;const int a=d*scale>>16;
-     for(int c=0;c<3;++c)p[c]=std::uint8_t(std::min(255,int(p[c])+(int(l.rgb[c])*a>>8)));
+     const auto& add=tint[a];
+     for(int c=0;c<3;++c)p[c]=std::uint8_t(std::min(255,int(p[c])+add[c]));
     }
    }
   }
