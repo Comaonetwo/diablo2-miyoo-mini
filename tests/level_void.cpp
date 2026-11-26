@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <gamedata.hpp>
 #include <gamedata_load.hpp>
+#include <world.hpp>
 #include <cstdio>
 #include <stdexcept>
 void check(bool v){if(!v)throw std::runtime_error("generated room void is walkable or valid floor is blocked");}
@@ -9,6 +10,30 @@ bool floor_at(const d2d::game::Level& l,float x,float y){
  for(const auto&p:picks)if(p.layer==1&&!p.hidden)return true;return false;
 }
 int main(int argc,char**argv)try{
+ // Maggot Lair slime doors lose their footprint as soon as opening starts.
+ {
+  using namespace d2d::game;
+  GameData data;
+  Level arena;arena.ds1=d2d::ds1::Map(8,8,0,1);arena.walk.assign(40*40,1);
+  for(int y=19;y<=21;++y)std::fill_n(arena.walk.begin()+y*40,40,0);
+  const auto crosses=[&](float from,float to){
+   auto path=player_walk(arena,from,4.1f,to,4.1f,false);
+   return !path.empty()&&std::abs(path.back().first-to)<.01f;
+  };
+  Npc door;door.root="objects";door.mode="NU";door.x=door.y=4;
+  door.size_x=door.size_y=3;door.collision=1;
+  door.operate_fn=d2d::rules::operate_fn::kSlimeDoor;
+  arena.npcs.push_back(door);
+  World world(&data,-1,-1);world.level=&arena;world.npc_states.resize(1);
+  set_footprint(arena,door,true);check(arena.unit_blocked(4,4)&&!crosses(2.1f,6.1f));
+  world.operate_door(0,1000);
+  check(world.npc_states[0].mode=="OP"&&!arena.unit_blocked(4,4));
+  check(crosses(2.1f,6.1f)&&crosses(6.1f,2.1f));
+  world.operate_door(0,1040);
+  check(world.npc_states[0].mode_ms==1000&&!arena.unit_blocked(4,4));
+  set_footprint(arena,door,true);world.reopen_doors();
+  check(!arena.unit_blocked(4,4)&&crosses(6.1f,2.1f));
+ }
  d2d::dt1::Tile floor;floor.width=160;floor.height=-80;
  // Empty/sparse/multi-layer cells and copies must retain the old vector-grid
  // iteration order without spans pointing into another grid's allocation.
