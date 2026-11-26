@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Frozen pre-0.2.8 rasterizer used only for pixel equivalence tests.
+// Pre-0.2.8 RGB reference with the current actor-coverage alpha convention.
 namespace reference {
 using namespace d2d::client;
 void blit_dt1_tile(std::vector<std::uint8_t>& framebuffer,
@@ -23,7 +23,7 @@ void blit_dt1_tile(std::vector<std::uint8_t>& framebuffer,
             const int alpha = hole ? hole->alpha(pixel_x, pixel_y, alpha_all) : alpha_all;
             if (alpha >= 255) { pixel[0] = colour.r; pixel[1] = colour.g; pixel[2] = colour.b; }
             else { pixel[0] = std::uint8_t((pixel[0] * (255 - alpha) + colour.r * alpha) / 255); pixel[1] = std::uint8_t((pixel[1] * (255 - alpha) + colour.g * alpha) / 255); pixel[2] = std::uint8_t((pixel[2] * (255 - alpha) + colour.b * alpha) / 255); }
-            pixel[3] = 0xFF;
+            if (alpha >= 128) pixel[3] = 0xFF;
         }
     }
 }
@@ -99,7 +99,7 @@ void blit_dt1_tile_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::T
             const int alpha = hole ? hole->alpha(pixel_x, pixel_y, alpha_all) : alpha_all;
             if (alpha >= 255) { pixel[0] = col.r; pixel[1] = col.g; pixel[2] = col.b; }
             else { pixel[0] = std::uint8_t((pixel[0] * (255 - alpha) + col.r * alpha) / 255); pixel[1] = std::uint8_t((pixel[1] * (255 - alpha) + col.g * alpha) / 255); pixel[2] = std::uint8_t((pixel[2] * (255 - alpha) + col.b * alpha) / 255); }
-            pixel[3] = 0xFF;
+            if (alpha >= 128) pixel[3] = 0xFF;
         }
     }
 }

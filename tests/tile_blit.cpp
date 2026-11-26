@@ -14,6 +14,19 @@ std::array<d2d::palette::Palette,32> palettes;
 Lighting light;
 const Hole cutout{400,300,70};
 std::size_t comparisons=0;
+void verify_actor_coverage() {
+ d2d::dt1::Tile tile;
+ tile.width=1;
+ tile.height=-1;
+ tile.pixels={1};
+ std::vector<std::uint8_t> frame(800*600*4);
+ for(int alpha:{127,128}){
+  frame[3]=254; // An actor has already been drawn here.
+  blit_dt1_tile(frame,tile,palettes[19],0,0,alpha,nullptr);
+  if(frame[3]!=(alpha==127?254:255))
+   throw std::runtime_error("tile actor coverage differs at alpha "+std::to_string(alpha));
+ }
+}
 void draw(bool old,std::vector<std::uint8_t>& fb,const d2d::dt1::Tile& tile,int x,int y,int mode) {
  const auto& p=palettes[19];
  if(mode==0){if(old)reference::blit_dt1_tile(fb,tile,p,x,y,255,nullptr);else blit_dt1_tile(fb,tile,p,x,y);}
@@ -68,6 +81,7 @@ void bench(const std::vector<d2d::dt1::Tile>& tiles,int rounds){
 int main(int argc,char**argv)try{
  for(int level=0;level<32;++level){std::array<d2d::palette::Rgba,256> e{};for(int i=0;i<256;++i)e[i]={std::uint8_t(i*level/31),std::uint8_t((255-i)*level/31),std::uint8_t((i*17%256)*level/31),std::uint8_t(i?255:0)};palettes[level]=d2d::palette::Palette(e);}
  light.pal=&palettes;light.grid.reset(0,0,0);
+ verify_actor_coverage();
  for(int y=0;y<light.grid.grid_size;++y)for(int x=0;x<light.grid.grid_size;++x)light.grid.values[y*light.grid.grid_size+x]=std::uint8_t((x*19+y*37)%256);
  std::vector<d2d::dt1::Tile> tiles;
  const bool arm_quick=argc>1&&std::string(argv[1])=="--arm-quick";
