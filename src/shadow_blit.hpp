@@ -11,12 +11,13 @@ namespace d2mini {
 inline void blit_shadow_scalar(std::span<std::uint8_t> out,int sw,int sh,std::span<const std::uint8_t> indices,int w,int h,int box_left,int box_top,int ax,int ay,std::span<std::uint16_t> mask,std::uint16_t id){
  if(w<=0||h<=0)return;
  const int bottom=box_top+h-1,left=ax+box_left+bottom/2,top=ay+bottom/2;
- // Keep the original per-pixel algorithm on platforms without NEON.
  for(int row=0;row<h;row+=2){
   const int yy=top-row/2;if(yy<0||yy>=sh)continue;
   const auto* src=indices.data()+std::size_t(h-1-row)*w;
-  for(int x=0;x<w;++x){
-   const int xx=left+x-row/2;if(!src[x]||xx<0||xx>=sw)continue;
+  const int xleft=left-row/2;
+  const int first=std::max(0,-xleft),end=std::min(w,sw-xleft);
+  for(int x=first;x<end;++x){
+   const int xx=xleft+x;if(!src[x])continue;
    auto& stamp=mask[std::size_t(yy)*sw+xx];if(stamp==id)continue;stamp=id;
    auto* p=out.data()+(std::size_t(yy)*sw+xx)*4;p[0]/=4;p[1]/=4;p[2]/=4;
   }
