@@ -16,5 +16,20 @@ int main()try{
   for(int k=0;k<40;++k){a.stamp(cx*8+3,cy*8+7,144,255);b.stamp_legacy(cx*8+3,cy*8+7,144,255);}
   if(a.values!=b.values)throw std::runtime_error("saturated light grid differs");
  }
+ d2d::rules::LightGrid reused;
+ reused.reset(12,18,5,7);
+ reused.stamp(12*8,18*8,72,230);
+ std::fill(reused.blocked.begin(),reused.blocked.end(),1);
+ for(int side:{7,3,12}){
+  reused.reset(-12,8,47,side);
+  for(int y=0;y<side;++y)for(int x=0;x<side;++x){
+   const int sx=reused.origin_x+x,sy=reused.origin_y+y;
+   if(reused.is_blocked(sx,sy)||reused.at(sx,sy)!=47)
+    throw std::runtime_error("previous room leaked into new light grid");
+  }
+  if(!reused.is_blocked(reused.origin_x-1,reused.origin_y))
+   throw std::runtime_error("outside room considered unblocked");
+  reused.blocked.back()=1;reused.values.front()=255;
+ }
  std::puts("PASS: clipped/offscreen/saturated lights match legacy grid including negative coordinates");
 }catch(const std::exception&e){std::fprintf(stderr,"%s\n",e.what());return 1;}
