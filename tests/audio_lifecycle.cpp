@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "audio.hpp"
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 using d2d::client::Audio;
 int main() try {
+ char pattern[]="/tmp/d2-audio-lifecycle-XXXXXX";
+ const char* dir=mkdtemp(pattern);
+ if(!dir)return 37;
+ struct FixtureDirectory {
+  std::filesystem::path path;
+  ~FixtureDirectory(){std::error_code error;std::filesystem::remove_all(path,error);}
+ } fixture{dir};
  SDL_Init(0);
- setenv("D2D_LOOPBACK","1",1);setenv("D2D_AUDIO_CAPTURE","/tmp/d2-audio-lifecycle.pcm",1);unsetenv("D2D_SILENT");
+ setenv("D2D_LOOPBACK","1",1);setenv("D2D_AUDIO_CAPTURE",(fixture.path/"capture.pcm").c_str(),1);unsetenv("D2D_SILENT");
  Audio audio;audio.init();if(!audio.ok)return 1;
  ALCint output_rate=0;alcGetIntegerv(audio.dev,ALC_FREQUENCY,1,&output_rate);if(output_rate!=D2_AUDIO_RATE)return 36;
  // A real SDL WAV decode, then ownership is retained without copying PCM.
@@ -28,7 +36,7 @@ int main() try {
  bool audible=false;for(auto x:pcm)audible|=x!=0;if(!audible)return 7;
  audio.stop(audio.ambience);
  // A short WAV forces repeated end-of-file wraps while queued music plays.
- const auto archive_path=std::filesystem::temp_directory_path()/"d2-music-stream-test.mpq";std::filesystem::remove(archive_path);
+ const auto archive_path=fixture.path/"music.mpq";
  HANDLE archive{},file{};
  if(!SFileCreateArchive(archive_path.c_str(),MPQ_CREATE_ARCHIVE_V1,16,&archive))return 10;
  if(!SFileCreateFile(archive,"music.wav",0,DWORD(wav.size()),0,MPQ_FILE_COMPRESS,&file)||!SFileWriteFile(file,wav.data(),DWORD(wav.size()),MPQ_COMPRESSION_ZLIB)||!SFileFinishFile(file)||!SFileCloseArchive(archive))return 11;
