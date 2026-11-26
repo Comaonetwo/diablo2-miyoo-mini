@@ -10,6 +10,14 @@ int main(){
  m.begin(&level);m.add(b,5,7);m.add(a,1,2);m.finish();
  auto p=m.at(&level,a,1.4f,2.8f,.5f);assert(std::abs(p[0]-1.2f)<.0001f&&std::abs(p[1]-2.4f)<.0001f);
  p=m.at(&level,b,5.4f,7,.5f);assert(std::abs(p[0]-5.2f)<.0001f); // types cannot collide
+ // An inversion at the very end must still make every key searchable.
+ M late;
+ late.begin(&level);
+ for(unsigned id=2;id<=128;++id)late.add(id,float(id),2);
+ late.add(1,1,2);
+ late.finish();
+ for(unsigned id=1;id<=128;++id)
+  assert(late.at(&level,id,float(id)+1,2,.5f)[0]==float(id)+.5f);
  assert(m.at(&other,a,1.4f,2.8f,.5f)[0]==1.4f); // change level snaps
  assert(m.at(&level,M::key(M::Missile,43),5.4f,7,0)[0]==5.4f); // newborn snaps
  assert(m.at(&level,a,9,2,.5f)[0]==9); // teleport snaps
