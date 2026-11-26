@@ -26,5 +26,19 @@ int main(){
   for(unsigned seed=0;seed<30;++seed){d2d::rules::Rng x{seed},y{seed};auto word=std::uint32_t(s<<20|q<<8);if(original_pick(list,x,o,word)!=pick_tile(list,y,o,word)||x.next()!=y.next())throw std::runtime_error("pick or RNG changed");}
  }
  Dt1File dense;dense.tiles.resize(100,{0,0,0,1,0});auto c=tile_candidates({&dense},0,0,0);if(c.size()!=40||c.front().second!=99||c[39].second!=60)throw std::runtime_error("40 candidate bound changed");
+ // Matches beyond the 40-entry cutoff must not affect the roll or RNG state.
+ Dt1File first,second;
+ first.tiles.resize(39,{0,0,0,1,0});
+ second.tiles.resize(4,{0,0,0,200,0});
+ std::vector<const Dt1File*> split{&first,&second};
+ const auto expected=original_candidates(split,0,0,0);
+ const auto actual=tile_candidates(split,0,0,0);
+ if(expected.size()!=40||actual.size()!=40||!std::equal(actual.begin(),actual.end(),expected.begin()))
+  throw std::runtime_error("candidate cutoff across two archives");
+ for(unsigned seed=0;seed<256;++seed){
+  d2d::rules::Rng before{seed},after{seed};
+  if(original_pick(split,before,0,0)!=pick_tile(split,after,0,0)||before.next()!=after.next())
+   throw std::runtime_error("cross-archive weighted roll");
+ }
  puts("PASS: candidate order, 40 limit, rarity/fallback picks and RNG match vector reference");
 }
