@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Crowded Cave Level 2, full pack, actual scroll use and controller portal entry."""
+"""Verify observed damage to Diablo from the Act IV combat save."""
 import os,re,json,socket,subprocess,time,shutil
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];tag=os.environ.get('D2_TEST_TAG','cures025');user=root/f'work/runtime/{tag}-{os.getpid()}';user.mkdir();sock=f'/tmp/d2-{tag}-{os.getpid()}.sock';log=open(root/f'work/release-audit-042/{tag}.log','w');result={'physical_console':False};p=None
@@ -52,17 +52,23 @@ try:
  cmd('click 690 555');frames(30);assert 'name=QAActFour'in cmd('state')
  twin=next(l.split('\t')for l in cmd('debug portals').splitlines()if l.startswith('1\t'));cmd('debug warp '+twin[2]+' '+twin[3]);frames(6);pad('x');frames(40)
  end=time.monotonic()+15
- while 'Diablo'not in cmd('monsters'):assert time.monotonic()<end;frames(12)
- boss=next(l.split('\t')for l in cmd('monsters').splitlines()if 'Diablo'in l);initial_hp=int(boss[5].split('/')[0]);id=int(re.search(r'#(\d+)',' '.join(boss))[1]);result['initial_hp']=initial_hp;result['attack']=cmd('debug attack');result['before']=cmd('state')
+ def boss_rows():
+  return [row for line in cmd('monsters').splitlines()
+          if len(row:=line.split('\t'))>=12 and row[0]=='diablo']
+ while not (rows:=boss_rows()):assert time.monotonic()<end;frames(12)
+ boss=rows[0];initial_hp=int(boss[5].split('/')[0]);id=int(boss[11].removeprefix('#'));result['initial_hp']=initial_hp;result['attack']=cmd('debug attack');result['before']=cmd('state')
  cmd('cmd belt 3');frames(8)
+ last_hp=initial_hp;swings=0
  for n in range(20):
-  rows=[l.split('\t')for l in cmd('monsters').splitlines()if 'Diablo'in l]
-  if not rows or int(rows[0][5].split('/')[0])<=0:break
-  boss=rows[0]
+  boss=next((row for row in boss_rows() if row[11]==f'#{id}'),None)
+  if boss is None:break
+  last_hp=int(boss[5].split('/')[0])
+  if last_hp<=0:break
   if n==0:cmd('debug warp '+str(float(boss[1])-1.5)+' '+boss[2]);frames(6)
-  cmd(f"cmd skill 152 {boss[1]} {boss[2]} {id} 0");frames(40)
- rows=[l.split('\t')for l in cmd('monsters').splitlines()if 'Diablo'in l];last_hp=int(rows[0][5].split('/')[0])if rows else 0
- result['final_hp']=last_hp;result['after']=cmd('state');result['swings']=n+1;assert last_hp<initial_hp and 'life=0/'not in result['after'],result
+  cmd(f"cmd skill 152 {boss[1]} {boss[2]} {id} 0");swings+=1;frames(40)
+ boss=next((row for row in boss_rows() if row[11]==f'#{id}'),None)
+ if boss is not None:last_hp=int(boss[5].split('/')[0])
+ result['final_hp']=last_hp;result['after']=cmd('state');result['swings']=swings;assert swings and last_hp<initial_hp and 'life=0/'not in result['after'],result
  result['result']='PASS'
  cmd('quit');assert p.wait(timeout=30)==0
 finally:
