@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "audio_ring.h"
 #include <array>
+#include <vector>
 #include <algorithm>
 #include <cstdio>
 #include <memory>
@@ -42,6 +43,24 @@ int main()try{
  in.fill(-20000);d2_audio_write(r.get(),in.data(),512);
  check(d2_audio_read_smooth(r.get(),out.data(),512,&smooth)==512);
  check(out[0]>-20000&&out[D2_AUDIO_FADE-1]==-20000&&out[511]==-20000);
+ // An underrun can span callback boundaries. The same FIFO samples should
+ // produce the same waveform regardless of how the device partitions them.
+ const auto waveform=[&](unsigned chunk){
+  D2AudioEnvelope envelope{0,D2_AUDIO_FADE};
+  std::vector<int16_t> result;
+  for(unsigned supplied:{37u,0u,91u,320u}){
+   in.fill(supplied==91?-25000:17000);
+   check(d2_audio_write(r.get(),in.data(),supplied)==supplied);
+   for(unsigned left=320;left;){
+    const unsigned n=std::min(chunk,left);
+    d2_audio_read_smooth(r.get(),out.data(),n,&envelope);
+    result.insert(result.end(),out.begin(),out.begin()+n);left-=n;
+   }
+  }
+  return result;
+ };
+ const auto whole=waveform(320);
+ for(unsigned chunk:{1u,17u,128u})check(waveform(chunk)==whole);
  constexpr unsigned count=1000000;
  std::thread producer([&]{for(unsigned i=0;i<count;){int16_t sample=int16_t(i);if(d2_audio_write(r.get(),&sample,1))++i;else std::this_thread::yield();}});
  bool valid=true;for(unsigned i=0;i<count;){int16_t sample;if(d2_audio_read(r.get(),&sample,1)){valid&=sample==int16_t(i);++i;}else std::this_thread::yield();}
