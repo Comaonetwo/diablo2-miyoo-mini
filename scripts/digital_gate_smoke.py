@@ -38,6 +38,8 @@ try:
   direction='dpdown' if y<25 else 'dpright'
   cmd('pad '+direction+' down');frames(4);cmd('pad '+direction+' up');frames(2)
  frames(80)
+ final=cmd('debug level').split()
+ assert final[1]=='2' and float(final[2])>=8,('field interior not reached',final)
  out['field_memory']=cmd('memory');out['monsters']=cmd('monsters');assert len(out['monsters'].splitlines())>1,out['monsters'];out['field_audio']=cmd('audio status');assert 'sfx_looped=0' in out['field_audio'];cmd('screenshot '+str(root/'outputs/prototype-0.2.11-digital-gate-mac.png'))
  cmd('quit');assert p.wait(timeout=15)==0;out['result']='PASS'
 finally:
