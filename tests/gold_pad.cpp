@@ -4,6 +4,12 @@
 #include <stdexcept>
 void check(bool b){if(!b)throw std::runtime_error("gold keypad contract");}
 int main(){using d2mini::GoldPad;GoldPad k;std::array<bool,9> keys{};
+ for(int direction=0;direction<4;++direction){
+  GoldPad pad;pad.show(false,100);std::array<bool,9> held{};held[direction]=true;
+  pad.update(held,.04f);pad.update(held,.20f);
+  check(pad.row==0&&pad.col==0);
+  pad.update(held,.16f);check(pad.row!=0||pad.col!=0);
+ }
  k.show(false,5000);keys[4]=true;k.update(keys,.04f);check(k.draft=="5000");k.update(keys,.04f);check(k.draft=="5000");keys={};k.update(keys,.04f);keys[4]=true;k.update(keys,.04f);check(k.draft=="1");k.append("2a5");check(k.amount()==125);k.erase();check(k.amount()==12);k.all();check(k.amount()==5000);k.append("42");check(k.amount()==42);k.accept();check(!k.open&&k.result==42);
  k.show(true,2000);k.append("99999999999999999999999999999");check(k.amount()==2000&&k.draft.size()<=7);keys={};k.update(keys,.04f);keys[5]=true;k.update(keys,.04f);check(!k.open&&!k.result);
  k.show(false,0);k.accept();check(k.open&&!k.result&&!k.notice.empty());
