@@ -32,7 +32,7 @@ try:
     route=(x,y,x+5.5*dx,y+5.5*dy);break
   if route:break
  assert route,'no free corridor';x,y,gx,gy=route;cmd(f'debug warp {gx} {gy}');frames();drop=int(cmd('debug give hp1').split('#')[1].split()[0]);frames()
- ground=next(l.split('\t') for l in cmd('ground').splitlines() if f'#{drop}' in l);gx,gy=map(float,ground[-2:]);endpoint=None
+ ground=next(row for line in cmd('ground').splitlines() if len(row:=line.split('\t'))>=7 and row[4]==f'#{drop}');gx,gy=map(float,ground[-2:]);endpoint=None
  for dx,dy in [(0.2,0.979795897),(0.979795897,0.2),(-0.2,-0.979795897),(-0.979795897,-0.2)]:
   xx,yy=gx+5.0*dx,gy+5.0*dy
   if all(cmd(f'debug blocked {gx+5*dx*n/20} {gy+5*dy*n/20}').strip()=='ok 0' for n in range(21)):
