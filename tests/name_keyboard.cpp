@@ -4,6 +4,14 @@
 #include <cstdio>
 void check(bool x){if(!x)throw std::runtime_error("name keyboard contract");}
 int main(){
+ for(auto seed:{"-Hero","Q2Hero","Two__Parts","Two Parts","Hero'"}){
+  d2mini::NameKeyboard seeded;seeded.show(seed);seeded.accept();
+  check(seeded.open&&!seeded.result&&!seeded.notice.empty());
+ }
+ for(auto seed:{"Ab","O'Brien","Two-Parts","Two_Parts"}){
+  d2mini::NameKeyboard seeded;seeded.show(seed);seeded.accept();
+  check(!seeded.open&&seeded.result==seed);
+ }
  d2mini::NameKeyboard k;k.show("");k.append("-a1b c_");check(k.draft=="abc_");k.accept();check(k.open&&!k.result&&!k.notice.empty());k.erase();k.accept();check(!k.open&&k.result=="abc");
  k.show("Hero");k.append("-a_b'c");check(k.draft=="Hero-abc");k.append("defghijklmnop");check(k.draft.size()==15);k.accept();check(!k.open);
  k.show("OldName");k.append("New");std::array<bool,8> a{};a[5]=true;k.update(a,.04f);check(!k.open&&!k.result);
