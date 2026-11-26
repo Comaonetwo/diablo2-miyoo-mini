@@ -8,6 +8,20 @@
 using namespace d2d::game;using namespace d2d::d2s;
 #define CHECK(x) do{if(!(x))throw std::runtime_error("stash_gold line "+std::to_string(__LINE__)+": " #x);}while(0)
 int main(int argc,char**argv)try{
+ {
+  Header hero;hero.name="GoldRoundtrip";hero.level=99;hero.status=0x20;
+  ItemTables tables;tables.stats.resize(16);
+  tables.stats[kLevel].csv_bits=7;
+  tables.stats[kGold].csv_bits=tables.stats[kGoldBank].csv_bits=25;
+  Stats wallet;wallet.values[kLevel]=99;wallet.values[kGold]=990000;wallet.values[kGoldBank]=2499980;
+  CHECK(d2d::rules::transfer_stash_gold(wallet,100,false)==20);
+  auto saved=write_save({},hero,wallet,{},tables);
+  auto loaded=parse_stats(saved,tables);
+  CHECK(loaded.get(kGold)==989980&&loaded.get(kGoldBank)==2500000);
+  CHECK(d2d::rules::transfer_stash_gold(loaded,100,true)==20);
+  const auto after=parse_stats(write_save(saved,hero,loaded,{},tables),tables);
+  CHECK(after.get(kGold)==990000&&after.get(kGoldBank)==2499980);
+ }
 
  Stats s;s.values[kLevel]=10;s.values[kGold]=5000;s.values[kGoldBank]=0;
  CHECK(d2d::rules::transfer_stash_gold(s,2000,false)==2000&&s.get(kGold)==3000&&s.get(kGoldBank)==2000);
