@@ -5,7 +5,44 @@
 #include <stdexcept>
 using namespace d2d::client::pad;
 #define check(yes) do{if(!(yes))throw std::runtime_error("digital control check failed at line "+std::to_string(__LINE__));}while(false)
+
+static void check_manual_cursor_click() {
+    Mapper mapper;
+    Sample input;
+    input.digital = true;
+    auto step = [&] { return mapper.step(input, Context::Game, .04f); };
+    auto& select = input.held[std::size_t(Button::Back)];
+    auto& right = input.held[std::size_t(Button::DpadRight)];
+    auto& click = input.held[std::size_t(Button::South)];
+
+    select = true;
+    step();
+    mapper.step(input, Context::Game, .04f, 1.1f);
+    right = true;
+    auto aim = step();
+    check(aim.cursor_mode && aim.cursor_dx > 0 && !aim.move_active && aim.keys.empty());
+
+    right = false;
+    click = true;
+    auto press = step();
+    check(press.cursor_mode && press.click_press && press.click_down && !press.click_release);
+    check(!press.interact_press && !press.rclick_press && press.keys.empty());
+    auto held = step();
+    check(held.click_down && !held.click_press && !held.click_release);
+    click = false;
+    auto release = step();
+    check(release.cursor_mode && release.click_release && !release.click_down && !release.click_press);
+    select = false;
+    auto exit = step();
+    check(!exit.cursor_mode && !exit.click_release && exit.keys.empty());
+
+    right = true;
+    auto walk = step();
+    check(walk.move_active && walk.move_x > 0 && walk.cursor_dx == 0 && walk.keys.empty());
+}
+
 int main()try{
+    check_manual_cursor_click();
     {Mapper belt;Sample q;q.digital=true;q.held[std::size_t(Button::North)]=true;
      auto a=belt.step(q,Context::Panel,.04f);check(a.return_belt&&!a.quick_drop&&!a.rclick_press);
      check(!belt.step(q,Context::Panel,.04f).return_belt);
