@@ -2,11 +2,11 @@
 """Desktop-only candidate rendering. Does not install or select a release font."""
 import json,os,re,socket,subprocess,time,struct,zlib
 from pathlib import Path
-from png_read import read_png
+from png_read import read_png, preview_rgb_rows
 root=Path(__file__).resolve().parents[1];output=root/'outputs/font-preview-038';output.mkdir(exist_ok=True);data=root/'work/game-data';out={'release_font_changed':False,'runs':[]}
 def physical(source,dest):
  w,h,ch,rows=read_png(source);assert (w,h)==(800,600)
- pixels=[b''.join(rows[y*5//4][x*5//4*ch:x*5//4*ch+3] for x in range(640))for y in range(480)]
+ pixels=preview_rgb_rows(rows,ch)
  def chunk(kind,bytes):return struct.pack('>I',len(bytes))+kind+bytes+struct.pack('>I',zlib.crc32(kind+bytes)&0xffffffff)
  dest.write_bytes(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>2I5B',640,480,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(b''.join(b'\0'+row for row in pixels)))+chunk(b'IEND',b''))
 for candidate in (False,True):
