@@ -2,14 +2,11 @@
 """Private-asset integration: port menu, panel scaling, field crossing and exit."""
 import json,os,re,socket,subprocess,time
 from pathlib import Path
+from smoke_control import command
 root=Path(__file__).resolve().parents[1];user=root/'work/runtime/port-ui-034-user';user.mkdir(exist_ok=True)
 sock=f'/tmp/d2-launch-{os.getpid()}.sock';log=open(root/'work/port-ui-034.log','w');p=None;out={'physical_console':False}
 def cmd(line):
- with socket.socket(socket.AF_UNIX) as s:
-  s.settimeout(60);s.connect(sock);s.sendall((line+'\n').encode());a=''
-  while not re.search(r'(?:^|\n)(ok|err)(?:\s|$)',a):a+=s.recv(65536).decode()
-  if re.search(r'(?:^|\n)err(?:\s|$)',a):raise RuntimeError(a)
-  return a
+ return command(sock,line)
 def state():return dict(re.findall(r'(\w+)=(.*?)(?= \w+=|$)',cmd('state').splitlines()[0]))
 def frames(n):
  goal=int(cmd('info').split('frame=')[1].split()[0])+n;t=time.monotonic()+60
