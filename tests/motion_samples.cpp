@@ -30,6 +30,15 @@ int main(){
  assert(hole.alpha(100,100,255)==16&&hole.alpha(160,100,255)==16);
  int last=16;for(int x=100;x<=100+hole.radius;++x){const int v=hole.alpha(x,100,255);assert(v>=last&&v<=255);last=v;}
  assert(hole.alpha(100+hole.radius,100,255)==255&&hole.alpha(100,100,8)==8);
+ for(int radius:{0,37,159,160})for(int base:{8,16,63,150,255}){
+  d2mini::RoofCutout sample{0,0,radius};
+  for(int y=0;y<=radius;++y)for(int x=0;x<=radius;++x){
+   const int d=x*x+y*y,inner=radius*2/3;
+   const int expected=d>=radius*radius?base:d<=inner*inner?std::min(base,16):
+       std::min(base,16+int(239.f*((std::sqrt(float(d))-inner)/(radius-inner))));
+   assert(sample.alpha(x,y,base)==expected&&sample.alpha(-x,y,base)==expected&&sample.alpha(x,-y,base)==expected&&sample.alpha(-x,-y,base)==expected);
+  }
+ }
  d2mini::ColoredLights colors;for(int i=0;i<1000;++i)colors.add(32,32,24,{255,50,0});assert(colors.count==1);
  std::vector<std::uint8_t> pixels(64*64*4,40);colors.apply(pixels,64,64);const auto mid=(32*64+32)*4;assert(pixels[mid]>pixels[mid+2]&&pixels[mid+3]==40);assert(pixels[0]==40);
  // Compare complete RGBA buffers, including clipped and overlapping lamps,
