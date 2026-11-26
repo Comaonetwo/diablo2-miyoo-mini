@@ -1,4 +1,4 @@
-# Diablo II for Miyoo Mini — installation 0.2.88
+# Diablo II for Miyoo Mini — installation
 
 This port supports classic Diablo II: Lord of Destruction on Onion, single-player acts I–IV. Act V, multiplayer and cinematics are disabled. Diablo II: Resurrected files are not supported.
 
@@ -10,7 +10,7 @@ If updating an existing installation, first back up its entire `Roms/PORTS/Games
 
 ## 2. Copy the port
 
-Extract `Diablo-II-Miyoo-0.2.88.zip` on your computer. Copy these three items from the extracted `Roms/PORTS` directory:
+Extract the install archive, `Diablo-II-Miyoo-<version>.zip`, on your computer. It contains a top-level `Roms` directory. Copy these three items from the extracted `Roms/PORTS` directory:
 
 1. `Games/DiabloII` into the card's `Roms/PORTS/Games/` directory.
 2. `Shortcuts/DIABLO II.port` into the card's `Roms/PORTS/Shortcuts/` directory.
