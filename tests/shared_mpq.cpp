@@ -18,11 +18,22 @@ int main(int argc,char** argv) try {
     check(SFileCreateArchive(second.c_str(),MPQ_CREATE_ARCHIVE_V1,16,&archive));
     check(SFileCreateFile(archive,"gamma.bin",0,DWORD(bytes.size()),0,MPQ_FILE_COMPRESS,&file));
     check(SFileWriteFile(file,bytes.data(),DWORD(bytes.size()),MPQ_COMPRESSION_ZLIB));
-    check(SFileFinishFile(file));check(SFileCloseArchive(archive));
+    check(SFileFinishFile(file));
+    const std::array<std::byte,1> alternate{std::byte{27}};
+    check(SFileCreateFile(archive,"alpha.bin",0,1,0,0,&file));
+    check(SFileWriteFile(file,alternate.data(),1,0)&&SFileFinishFile(file));
+    check(SFileCloseArchive(archive));
     std::optional<d2d::mpq::File> retained,isolated;
     {
         d2d::mpq::Stack original;original.push(path);original.push(second);
         auto independently_opened=original.reopen();check(independently_opened.read("alpha.bin")==bytes);
+        d2d::mpq::Stack reverse;reverse.push(second);reverse.push(path);
+        auto shared=reverse.share();auto reopened=reverse.reopen();
+        for(auto* stack:{&reverse,&shared,&reopened}){
+            check(stack->read("alpha.bin")==std::vector<std::byte>(alternate.begin(),alternate.end()));
+            auto input=stack->open("alpha.bin");std::byte result{};
+            check(input&&input->size()==1&&input->read(&result,1)==1&&result==alternate[0]);
+        }
         std::array<std::future<void>,4> jobs;
         for(auto& job:jobs)job=std::async(std::launch::async,[view=original.share(),&bytes]()mutable {
             for(int n=0;n<40;++n) {
