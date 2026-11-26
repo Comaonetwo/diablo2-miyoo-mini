@@ -1455,7 +1455,7 @@ index d47420c..be00169 100644
      void close();
  
 diff --git a/apps/d2d/gamepad_map.hpp b/apps/d2d/gamepad_map.hpp
-index 4f10b48..6021d7b 100644
+index 4f10b48..3ecdaf7 100644
 --- a/apps/d2d/gamepad_map.hpp
 +++ b/apps/d2d/gamepad_map.hpp
 @@ -25,9 +25,10 @@ enum class Context { Title, Menu, Game, Panel, Shop };
@@ -1498,7 +1498,26 @@ index 4f10b48..6021d7b 100644
      bool  trade_press = false;                     // a store's X: buy or sell what's under the cursor
      int   tab_step = 0;                            // a store's shoulders: the tab before (-1) or after (1)
      std::vector<Key> keys;
-@@ -90,6 +96,14 @@ struct Aim {
+@@ -76,20 +82,31 @@ struct Aim {
+ // Index into `candidates` or -1. `face` is a world direction (need not be unit; zero = any way).
+ [[nodiscard]] inline int pick_target(float from_x, float from_y, float face_x, float face_y, std::span<const Candidate> candidates,
+                                      int sticky, const Aim& aim = {}) {
++    const float max_reach = std::max(aim.reach, aim.sticky_reach);
+     const float face_length = std::hypot(face_x, face_y);
+     int best = -1;
+     float best_distance = 0;
+     for (std::size_t i = 0; i < candidates.size(); ++i) {
+         const float dx = candidates[i].x - from_x, dy = candidates[i].y - from_y;
++        if (std::max(std::abs(dx), std::abs(dy)) > max_reach) continue;
+         const float distance = std::hypot(dx, dy);
+         if (candidates[i].id == sticky && distance <= aim.sticky_reach) return int(i);
+-        if (distance > aim.reach) continue;
++        if (distance > aim.reach || (best >= 0 && distance >= best_distance)) continue;
+         if (face_length > 0 && distance > 0.3f && (dx * face_x + dy * face_y) / (distance * face_length) < aim.cone_cos) continue;
+-        if (best < 0 || distance < best_distance) { best = int(i); best_distance = distance; }
++        best = int(i);
++        best_distance = distance;
+     }
      return best;
  }
  
@@ -1513,7 +1532,7 @@ index 4f10b48..6021d7b 100644
  // The cursor's hop in a panel: the spot `points` nearest in the d-pad's
  // direction, a spot off to the side counting double, so a press goes along
  // a grid's row or column before it leaves it. Index or -1.
-@@ -111,23 +125,43 @@ public:
+@@ -111,23 +128,43 @@ public:
  
      // `seconds` since the last frame. A pad that went away is a default
      // Sample: every button lets go, so nothing stays held.
@@ -1559,7 +1578,7 @@ index 4f10b48..6021d7b 100644
              out.rclick_press = secondary && !secondary_prev_;
              secondary_prev_ = secondary;
          } else {
-@@ -137,53 +171,101 @@ public:
+@@ -137,53 +174,101 @@ public:
          // Right stick: the cursor. In the menus the left one moves it too.
          float cursor_x = sample.rx, cursor_y = sample.ry;
          if (!game) { cursor_x += sample.lx; cursor_y += sample.ly; }
@@ -1681,7 +1700,7 @@ index 4f10b48..6021d7b 100644
          prev_ = held;
          return out;
      }
-@@ -200,7 +282,10 @@ private:
+@@ -200,7 +285,10 @@ private:
      bool hysteresis(float value, bool down) const { return down ? value > config_.trigger_release : value >= config_.trigger_press; }
  
      Config config_;
