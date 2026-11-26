@@ -563,6 +563,36 @@ index f13cba0..75600c7 100644
  
  // Palette-lookup blit: index 0 is transparent (skip), all other indices map
  // through the supplied palette to real RGBA. Signed dest so negative offsets
+diff --git a/apps/d2d/corner_hud.hpp b/apps/d2d/corner_hud.hpp
+new file mode 100644
+index 0000000..8c59205
+--- /dev/null
++++ b/apps/d2d/corner_hud.hpp
+@@ -0,0 +1,24 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include "merc_panel.hpp"
++namespace d2d::client {
++inline void draw_corner_hud(std::vector<std::uint8_t>& f,const Scene& scene,const View& view,bool map_open,int merc_life,int merc_max){
++ const auto& pal=scene.act_pal.entries().empty()?scene.pal:scene.act_pal;
++ const auto fill=[&](int x,int y,int w,int h,std::array<std::uint8_t,3> c){for(int yy=y;yy<y+h;++yy)for(int xx=x;xx<x+w;++xx){if(xx<0||xx>=800||yy<0||yy>=600)continue;auto*p=f.data()+(yy*800+xx)*4;for(int k=0;k<3;++k)p[k]=c[k];p[3]=255;}};
++ const bool hired=view.header.merc_seed!=0&&!view.header.merc_dead&&merc_life>0;constexpr int top=12;
++ if(hired){
++  fill(12,top,36,42,{137,112,70});fill(14,top+2,32,38,{12,12,12});
++  static constexpr int icon_class[]{0,3,1,4};const int act=(d2d::game::merc_act(scene,view.header)==2?1:d2d::game::merc_act(scene,view.header)==3?2:d2d::game::merc_act(scene,view.header)==5?3:0);
++  const auto& original=scene.merc_icons[std::size_t(act)];
++  const auto& icon=original.frames_per_direction()?original:scene.class_icons[std::size_t(icon_class[act])];
++  if(icon.frames_per_direction()){const auto& image=icon.frame(0,0);if(image.width&&image.height)for(int y=0;y<30;++y)for(int x=0;x<30;++x){const auto index=image.pixels[std::size_t(y*image.height/30)*image.width+std::size_t(x*image.width/30)];if(index){const auto c=pal[index];auto*p=f.data()+((top+3+y)*800+15+x)*4;p[0]=c.r;p[1]=c.g;p[2]=c.b;}}}
++  const int hp=merc_max>0?int(std::int64_t(std::clamp(merc_life,0,merc_max))*30/merc_max):0;
++  fill(15,top+35,30,4,{45,12,12});fill(15,top+35,hp,4,hp<8?std::array<std::uint8_t,3>{200,45,30}:std::array<std::uint8_t,3>{40,170,45});
++ }
++ if(map_open&&view.level){
++  const d2d::font::TextScaleScope scale(100);const d2d::font::TextWeightScope weight(scene.use_readable());const auto& font=scene.readable(scene.font);
++  const auto text=d2mini::fit_text(font,view.level->name,250,22,100,75,false);
++  if(!text.lines.empty()){const d2d::font::TextScaleScope fit(text.scale);const int width=font.ink_width(text.lines[0]),y=top;fill(782-width,y-2,width+8,24,{0,0,0});font.draw_tinted(f,800,600,pal,786-width,y,text.lines[0],220,205,166);}
++ }
++}
++}
 diff --git a/apps/d2d/devctl_verbs.hpp b/apps/d2d/devctl_verbs.hpp
 index 8a9004a..bd7c2b5 100644
 --- a/apps/d2d/devctl_verbs.hpp
@@ -3476,6 +3506,97 @@ index 7906cf1..59cfcf0 100644
 +    std::fprintf(stderr, "Fatal: %s\n", error.what());
 +    return 1;
  }
+diff --git a/apps/d2d/merc_panel.hpp b/apps/d2d/merc_panel.hpp
+new file mode 100644
+index 0000000..0e84338
+--- /dev/null
++++ b/apps/d2d/merc_panel.hpp
+@@ -0,0 +1,85 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include "scene.hpp"
++#include "items.hpp"
++#include "text_layout.hpp"
++#include <world.hpp>
++#include <merc_inventory.hpp>
++namespace d2d::client {
++inline std::array<int,4> merc_panel_rect(int slot){
++    namespace b=d2d::d2s::body_location;
++    if(slot==b::kHead)return {213,65,56,56};
++    if(slot==b::kTorso)return {213,135,56,87};
++    if(slot==b::kRightArm)return {98,106,56,114};
++    if(slot==b::kLeftArm)return {329,106,56,114};
++    return {};
++}
++inline int merc_panel_slot_at(const Scene& scene,const d2d::d2s::Header& h,int x,int y){
++    for(int slot:{d2d::d2s::body_location::kHead,d2d::d2s::body_location::kTorso,d2d::d2s::body_location::kRightArm,d2d::d2s::body_location::kLeftArm}){
++        if(!d2d::game::merc_slot(scene,h,slot))continue;
++        const auto b=merc_panel_rect(slot);if(x>=b[0]&&x<b[0]+b[2]&&y>=b[1]&&y<b[1]+b[3])return slot;
++    }
++    return -1;
++}
++inline void draw_merc_panel(std::vector<std::uint8_t>& f,const Scene& scene,const View& view,std::string_view name,int mx,int my){
++    using namespace d2d::d2s;
++    const auto& pal=scene.act_pal.entries().empty()?scene.pal:scene.act_pal;
++    const auto fill=[&](int x,int y,int w,int h,std::array<std::uint8_t,3> rgb){
++        for(int yy=std::max(0,y);yy<std::min(600,y+h);++yy)for(int xx=std::max(0,x);xx<std::min(800,x+w);++xx){auto*p=f.data()+(yy*800+xx)*4;p[0]=rgb[0];p[1]=rgb[1];p[2]=rgb[2];p[3]=255;}
++    };
++    if(scene.merc_panel_bg.frames_per_direction()>=4){
++        const auto& first=scene.merc_panel_bg.frame(0,0);
++        for(unsigned i=0;i<4;++i)blit_sprite(f,scene.merc_panel_bg.frame(0,i),pal,80+int(i%2)*int(first.width),60+int(i/2)*int(first.height));
++    }else{fill(80,60,320,432,{117,102,66});fill(83,63,314,426,{28,27,24});}
++    const d2d::font::TextScaleScope scale(100);
++    const d2d::font::TextWeightScope weight(scene.use_readable());
++    const d2d::font::TextContrastScope contrast(true);
++    const d2d::font::PanelTextScope sharp(g_sharp_panel_text&&g_ui_scale>100,false);
++    const auto& font=scene.readable(scene.font);
++    const auto text=[&](std::string_view value,int x,int y,int width,int height=20,bool gold=false){
++        if(scene.use_readable()&&y>=260){y+=2;if(x==216)x+=2;}
++        const auto fit=d2mini::fit_text(font,value,width-6,height,scene.use_readable()?90:100,45,false);
++        const d2d::font::TextScaleScope fitted(fit.scale);
++        if(!fit.lines.empty()){
++            const auto bounds=font.ink_bounds(fit.lines[0]);
++            font.draw_tinted(f,800,600,pal,x+(width-(bounds[2]-bounds[0]))/2-bounds[0],y+(height-(bounds[3]-bounds[1]))/2-bounds[1],fit.lines[0],gold?220:235,gold?191:235,gold?127:235);
++        }
++    };
++    if(!view.header.expansion()||!view.header.merc_seed){text("Mercenary",84,260,151,16,true);text("No mercenary hired",96,285,288);text("Visit a mercenary captain",96,438,250);return;}
++    const int act=d2d::game::merc_act(scene,view.header);
++    const auto wearer=d2d::game::merc_wearer(scene,view.header,view.merc_items);
++    const char* kind=act==1?"Rogue Scout":act==2?"Desert Mercenary":act==3?"Iron Wolf":act==5?"Barbarian":"Mercenary";
++    text(name.empty()?std::string_view(kind):name,84,260,151,16,true);
++    text(kind,241,260,151,16);
++    text(view.header.merc_dead?"Dead":std::format("Life {} / {}",view.merc_sheet.life,view.merc_sheet.max_life),85,289,121,22);
++    text("Level",216,284,48,14);text(std::to_string(wearer.lvl),216,300,48,14);
++    text(view.header.merc_dead?"Visit a captain":"Mercenary",273,289,119,22);
++    const Item* hover=nullptr;std::array<int,4> hover_box{};
++    for(auto [slot,label]:{std::pair{body_location::kHead,"Helm"},std::pair{body_location::kTorso,"Armor"},std::pair{body_location::kRightArm,"Weapon"},std::pair{body_location::kLeftArm,"Shield"}}){
++        if(!d2d::game::merc_slot(scene,view.header,slot))continue;
++        const auto b=merc_panel_rect(slot);const bool over=mx>=b[0]&&mx<b[0]+b[2]&&my>=b[1]&&my<b[1]+b[3];
++        if(over){
++            fill(b[0]-2,b[1]-2,b[2]+4,2,{232,195,93});fill(b[0]-2,b[1]+b[3],b[2]+4,2,{232,195,93});
++            fill(b[0]-2,b[1],2,b[3],{232,195,93});fill(b[0]+b[2],b[1],2,b[3],{232,195,93});
++        }
++        const auto item=std::ranges::find_if(view.merc_items,[&](const Item& i){return i.location==item_location::kEquipped&&i.slot==slot;});
++        if(item==view.merc_items.end()){text(label,b[0]+2,b[1]+b[3]/2-8,b[2]-4,16);continue;}
++        if(const auto* sprite=scene.item_sprite(*item);sprite&&sprite->frames_per_direction()){
++            const auto& frame=sprite->frame(0,0);
++            blit_sprite(f,frame,scene.item_pal(*item,pal),b[0]+(b[2]-int(frame.width))/2,b[1]+(b[3]-int(frame.height))/2);
++        }
++        if(over){hover=&*item;hover_box=b;}
++    }
++    const auto stat=[&](std::string_view label,std::string value,int column,int row){
++        const int x=84+column*160,y=326+row*24;text(label,x,y,98,16);text(value,x+103,y,46,16);
++    };
++    stat("Strength",std::to_string(wearer.str),0,0);stat("Dexterity",std::to_string(wearer.dex),1,0);
++    stat("Damage",std::format("{}-{}",view.merc_sheet.min,view.merc_sheet.max),0,1);stat("Defense",std::to_string(view.merc_sheet.def),1,1);
++    stat("Fire resist.",std::to_string(view.merc_sheet.res[0]),0,2);stat("Light. resist.",std::to_string(view.merc_sheet.res[1]),1,2);
++    stat("Cold resist.",std::to_string(view.merc_sheet.res[2]),0,3);stat("Poison resist.",std::to_string(view.merc_sheet.res[3]),1,3);
++    const auto notice=d2d::game::merc_item_message(view.merc_notice);
++    if(*notice)text(notice,92,438,250,36,true);
++    else text(act==1?"Bows only":act==2?"Spears / polearms / javelins":act==3?"One-handed swords / shields":"Swords only",92,438,250,36,true);
++    if(hover){auto lines=item_lines(scene,*hover,wearer.lvl,&wearer);draw_hover_text(f,scene,lines,hover_box[0],hover_box[0]+hover_box[2],hover_box[1]+hover_box[3],hover_box[1]);}
++}
++}
 diff --git a/apps/d2d/panels.cpp b/apps/d2d/panels.cpp
 index 85ab654..0b561c3 100644
 --- a/apps/d2d/panels.cpp
@@ -4744,6 +4865,199 @@ index a1c88ed..185e9a1 100644
  void draw_gold(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const d2d::d2s::Stats& stats, bool store);
  
  }  // namespace d2d::client
+diff --git a/apps/d2d/tile_blit.cpp b/apps/d2d/tile_blit.cpp
+new file mode 100644
+index 0000000..517585f
+--- /dev/null
++++ b/apps/d2d/tile_blit.cpp
+@@ -0,0 +1,187 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include "world_view.hpp"
++#include <cstring>
++#include "opaque_run.hpp"
++namespace d2d::client {
++namespace {
++inline void paint_opaque_run(std::uint8_t* pixel,const std::uint8_t* indices,int count,const d2d::palette::Rgba* lookup){
++#ifndef D2D_MIYOO
++    if(g_bench_legacy_tiles){d2mini::opaque_run_scalar(pixel,indices,count,lookup);return;}
++#endif
++    d2mini::opaque_run(pixel,indices,count,lookup);
++}
++}
++
++void blit_dt1_tile(std::vector<std::uint8_t>& framebuffer,
++                   const d2d::dt1::Tile& tile,
++                   const d2d::palette::Palette& pal,
++                   int screen_x, int screen_y, int alpha_all , const Hole* hole) {
++    if(d2mini::world_occlusion.hides(screen_x,screen_y,int(tile.width),std::abs(tile.height)))return;
++    const int screen_w = fb_width(framebuffer);
++    const int left = std::max(0, -screen_x), right = std::min(int(tile.width), screen_w - screen_x);
++    const int first = std::max(0, -screen_y), last = std::min(std::abs(tile.height), int(kScreenHeight) - screen_y);
++    if (left >= right || first >= last) return;
++    for (int y = first; y < last; ++y) {
++        const int pixel_y = screen_y + y;
++        d2mini::world_occlusion.visible(screen_x+left,screen_x+right,screen_y+y,[&](int x0,int x1){
++        tile.spans(std::size_t(y), x0-screen_x, x1-screen_x, [&](int x, const std::uint8_t* indices, int count) {
++            auto* pixel = framebuffer.data() + (std::size_t(pixel_y) * screen_w + screen_x + x) * 4;
++            if (!hole && alpha_all >= 255) {
++                paint_opaque_run(pixel,indices,count,pal.entries().data());
++            } else for (int i = 0; i < count; ++i, pixel += 4) {
++                const auto c = pal[indices[i]];
++                const int alpha = hole ? hole->alpha(screen_x + x + i, pixel_y, alpha_all) : alpha_all;
++                pixel[0] = std::uint8_t((pixel[0] * (255 - alpha) + c.r * alpha) / 255);
++                pixel[1] = std::uint8_t((pixel[1] * (255 - alpha) + c.g * alpha) / 255);
++                pixel[2] = std::uint8_t((pixel[2] * (255 - alpha) + c.b * alpha) / 255);
++                if(alpha>=128)pixel[3] = 255;
++            }
++        });
++        });
++    }
++}
++
++void blit_dt1_shadow(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile,
++                     const d2d::palette::Palette& pal, int screen_x, int screen_y) {
++    if(d2mini::world_occlusion.hides(screen_x,screen_y,int(tile.width),std::abs(tile.height)))return;
++    const int screen_w = fb_width(framebuffer);
++    const int left = std::max(0, -screen_x), right = std::min(int(tile.width), screen_w - screen_x);
++    const int first = std::max(0, -screen_y), last = std::min(std::abs(tile.height), int(kScreenHeight) - screen_y);
++    if (left >= right || first >= last) return;
++    for (int y = first; y < last; ++y) {
++        d2mini::world_occlusion.visible(screen_x+left,screen_x+right,screen_y+y,[&](int x0,int x1){
++        tile.spans(std::size_t(y), x0-screen_x, x1-screen_x, [&](int x, const std::uint8_t* indices, int count) {
++            auto* pixel = framebuffer.data() + (std::size_t(screen_y + y) * screen_w + screen_x + x) * 4;
++            for (int i = 0; i < count; ++i, pixel += 4) {
++                const auto c = pal[indices[i]];
++                pixel[0] = std::uint8_t((pixel[0] * 3 + c.r) / 4);
++                pixel[1] = std::uint8_t((pixel[1] * 3 + c.g) / 4);
++                pixel[2] = std::uint8_t((pixel[2] * 3 + c.b) / 4);
++            }
++        });
++        });
++    }
++}
++
++void blit_dt1_tile_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile, const Lighting& light,
++                       int screen_x, int screen_y, int cell_x, int cell_y, int top_x, int top_y, bool floor, int alpha_all , const Hole* hole) {
++    if(d2mini::world_occlusion.hides(screen_x,screen_y,int(tile.width),std::abs(tile.height)))return;
++    // The subtile corners round the cell: a tile's pixels reach up to 6
++    // subtiles before its top corner (tall floors) and 8 past.
++    if (screen_x >= fb_width(framebuffer) || screen_x + tile.width <= 0
++        || screen_y >= int(kScreenHeight) || screen_y + std::abs(tile.height) <= 0) return;
++    constexpr int kPatch = 16, kOrigin = 6;
++    std::array<float, kPatch * kPatch> corners{};
++    int low = 255, high = 0;
++    for (int j = 0; j < kPatch; ++j)
++        for (int i = 0; i < kPatch; ++i) {
++            const int value = light.grid.at(cell_x * 5 - kOrigin + i, cell_y * 5 - kOrigin + j);
++            corners[std::size_t(j * kPatch + i)] = float(value);
++            low = std::min(low, value); high = std::max(high, value);
++        }
++    const auto& pals = *light.pal;
++    if (low >> 3 == high >> 3) { blit_dt1_tile(framebuffer, tile, pals[std::size_t(low >> 3)], screen_x, screen_y, alpha_all, hole); return; }
++    // Screen offset from the top corner → subtiles into the cell: dx - dy =
++    // x / 80 cells, dx + dy = y / 40.
++    auto level = [&](int offset_x, int offset_y) {
++        const float along_x = float(offset_x) / (kIsoW / 2), along_y = float(offset_y) / (kIsoH / 2);
++        const float grid_a = std::clamp((along_y + along_x) * 2.5f + kOrigin, 0.f, kPatch - 1.001f), grid_b = std::clamp((along_y - along_x) * 2.5f + kOrigin, 0.f, kPatch - 1.001f);
++        const int column = int(grid_a), row = int(grid_b);
++        const float frac_a = grid_a - float(column), fb2 = grid_b - float(row);
++        const float* corner = &corners[std::size_t(row * kPatch + column)];
++        return std::size_t(int((corner[0] + (corner[1] - corner[0]) * frac_a) * (1 - fb2) + (corner[kPatch] + (corner[kPatch + 1] - corner[kPatch]) * frac_a) * fb2) >> 3);
++    };
++    // Wall lighting depends only on the screen column; reuse it across rows.
++    // Zero means not sampled yet, levels 0..31 are stored as 1..32.
++    if(!g_fast_render){
++    std::array<std::uint8_t, kScreenWidth> wall_levels{};
++    const int screen_w = fb_width(framebuffer);
++    const int left = std::max(0, -screen_x), right = std::min(int(tile.width), screen_w - screen_x);
++    const int first = std::max(0, -screen_y), last = std::min(std::abs(tile.height), int(kScreenHeight) - screen_y);
++    for (int y = first; y < last; ++y) {
++        const int pixel_y = screen_y + y;
++        int last_group = INT32_MIN; std::size_t cached_light = 0;
++        d2mini::world_occlusion.visible(screen_x+left,screen_x+right,screen_y+y,[&](int x0,int x1){
++        tile.spans(std::size_t(y), x0-screen_x, x1-screen_x, [&](int x, const std::uint8_t* indices, int count) {
++            auto* pixel = framebuffer.data() + (std::size_t(pixel_y) * screen_w + screen_x + x) * 4;
++            for (int i = 0; i < count; ++i, pixel += 4) {
++                const int pixel_x = screen_x + x + i;
++                const int group = g_fast_render ? (pixel_x & ~3) : pixel_x;
++                if (group != last_group) {
++                    if (floor) cached_light = level(group - top_x, (g_fast_render ? (pixel_y & ~1) : pixel_y) - top_y);
++                    else if (std::size_t(group) >= wall_levels.size()) cached_light = level(group - top_x, kIsoH / 2);
++                    else {
++                        auto& sample = wall_levels[std::size_t(group)];
++                        if (!sample) sample = std::uint8_t(level(group - top_x, kIsoH / 2) + 1);
++                        cached_light = sample - 1;
++                    }
++                    last_group = group;
++                }
++                auto col = pals[cached_light][indices[i]];
++                if (!hole && alpha_all >= 255) {col.a = 255; std::memcpy(pixel, &col, 4);}
++                else {
++                    const int alpha = hole ? hole->alpha(pixel_x, pixel_y, alpha_all) : alpha_all;
++                    pixel[0] = std::uint8_t((pixel[0] * (255 - alpha) + col.r * alpha) / 255);
++                    pixel[1] = std::uint8_t((pixel[1] * (255 - alpha) + col.g * alpha) / 255);
++                    pixel[2] = std::uint8_t((pixel[2] * (255 - alpha) + col.b * alpha) / 255);
++                    if(alpha>=128)pixel[3] = 255;
++                }
++            }
++        });
++        });
++    }
++        return;
++    }
++    std::array<std::uint8_t,kScreenWidth> wall_levels{};
++    // Fast lighting samples one level per four screen pixels, so its cache
++    // needs one byte per group rather than one byte per pixel.
++    std::array<std::uint8_t,(kScreenWidth+3)/4> floor_levels{};
++#ifndef D2D_MIYOO
++    std::array<std::uint8_t,kScreenWidth> legacy_floor_levels{};
++#endif
++    int floor_row=INT32_MIN;
++    const int screen_w = fb_width(framebuffer);
++    const int left = std::max(0, -screen_x), right = std::min(int(tile.width), screen_w - screen_x);
++    const int first = std::max(0, -screen_y), last = std::min(std::abs(tile.height), int(kScreenHeight) - screen_y);
++    for (int y = first; y < last; ++y) {
++        const int pixel_y = screen_y + y;
++        const int sampled_y=g_fast_render?(pixel_y&~1):pixel_y;
++        if(floor&&g_fast_render&&floor_row!=sampled_y){
++#ifndef D2D_MIYOO
++            if(g_bench_legacy_light_cache)legacy_floor_levels.fill(0);else
++#endif
++            floor_levels.fill(0);floor_row=sampled_y;
++        }
++        const auto sampled_level=[&](int group){
++            if(!floor){if(std::size_t(group)>=wall_levels.size())return level(group-top_x,kIsoH/2);auto& cached=wall_levels[std::size_t(group)];if(!cached)cached=std::uint8_t(level(group-top_x,kIsoH/2)+1);return std::size_t(cached-1);}
++            if(g_fast_render&&group>=0&&group<int(kScreenWidth)){
++#ifndef D2D_MIYOO
++                if(g_bench_legacy_light_cache){auto& cached=legacy_floor_levels[std::size_t(group)];if(!cached)cached=std::uint8_t(level(group-top_x,sampled_y-top_y)+1);return std::size_t(cached-1);}
++#endif
++                auto& cached=floor_levels[std::size_t(group/4)];if(!cached)cached=std::uint8_t(level(group-top_x,sampled_y-top_y)+1);return std::size_t(cached-1);
++            }
++            return level(group-top_x,sampled_y-top_y);
++        };
++        d2mini::world_occlusion.visible(screen_x+left,screen_x+right,pixel_y,[&](int x0,int x1){
++        tile.spans(std::size_t(y),x0-screen_x,x1-screen_x,[&](int x,const std::uint8_t* indices,int count){
++            auto* pixel=framebuffer.data()+(std::size_t(pixel_y)*screen_w+screen_x+x)*4;
++            if(!hole&&alpha_all>=255&&g_fast_render){
++                int i=0;while(i<count){const int px=screen_x+x+i,group=g_fast_render?(px&~3):px;
++                    const int end=g_fast_render?std::min(count,i+4-(px&3)):i+1;
++                    const auto* lookup=pals[sampled_level(group)].entries().data();
++                    paint_opaque_run(pixel,indices+i,end-i,lookup);pixel+=(end-i)*4;i=end;
++                }
++            }else{
++                int previous=INT32_MIN;std::size_t sample=0;
++                for(int i=0;i<count;++i,pixel+=4){const int px=screen_x+x+i,group=g_fast_render?(px&~3):px;
++                    if(group!=previous){sample=sampled_level(group);previous=group;}
++                    auto c=pals[sample][indices[i]];if(!hole&&alpha_all>=255){c.a=255;std::memcpy(pixel,&c,4);continue;}const int alpha=hole?hole->alpha(px,pixel_y,alpha_all):alpha_all;
++                    pixel[0]=std::uint8_t((pixel[0]*(255-alpha)+c.r*alpha)/255);pixel[1]=std::uint8_t((pixel[1]*(255-alpha)+c.g*alpha)/255);pixel[2]=std::uint8_t((pixel[2]*(255-alpha)+c.b*alpha)/255);if(alpha>=128)pixel[3]=255;
++                }
++            }
++        });
++        });
++    }
++}
++
++}
 diff --git a/apps/d2d/town.cpp b/apps/d2d/town.cpp
 index 59369b9..cd62396 100644
 --- a/apps/d2d/town.cpp
@@ -5798,7 +6112,7 @@ index 59369b9..cd62396 100644
      }
  
 diff --git a/apps/d2d/town.hpp b/apps/d2d/town.hpp
-index caac2c9..55c889b 100644
+index caac2c9..2e6f76f 100644
 --- a/apps/d2d/town.hpp
 +++ b/apps/d2d/town.hpp
 @@ -5,6 +5,7 @@
@@ -5878,10 +6192,11 @@ index caac2c9..55c889b 100644
      bool  inv_open = false;   // 'I' — inventory panel
      bool  char_open = false;  // 'C' — character panel
      bool  stats_down = false, skills_down = false;   // New Stats / New Skills held (DAT_007c02e4 / DAT_007c02e8)
-@@ -269,6 +282,15 @@ struct Town {
+@@ -269,6 +282,16 @@ struct Town {
  
      Town(const Scene* game_scene, CharCreateUI& player_character, int start_x = -1, int start_y = -1)
          : scene(game_scene), character(player_character), world(game_scene, start_x, start_y) {
++        if (!game_scene) return;  // The client can still display its test pattern.
 +        world.before_arrive = [game_scene] {
 +            // Input/world ticks precede draw_view: the previous frame's Unit
 +            // pointers are gone. Rebuild destination rooms without retaining
@@ -5894,7 +6209,7 @@ index caac2c9..55c889b 100644
          have_world = world.level && !world.level->dt1s.empty();
          view = world.view();
          level = view.level;
-@@ -320,6 +342,7 @@ struct Town {
+@@ -320,6 +343,7 @@ struct Town {
      [[nodiscard]] const d2d::rules::QuestBits& quest_bits() const;
      [[nodiscard]] QuestState quest_state() const { return { view.quest_log, view.game_quests, view.den_left }; }
      int view_act() const;
@@ -5902,7 +6217,7 @@ index caac2c9..55c889b 100644
      void toggle_quest_log();               // Q and the mini-panel (FUN_004a3fe0)
      [[nodiscard]] QuestLogButton quest_log_button_now() const;
  
-@@ -338,6 +361,7 @@ struct Town {
+@@ -338,6 +362,7 @@ struct Town {
      int menu_after_speech = -1;                    // the NPC whose menu opens once its quest speech ends
      bool questdone_sound = false;                  // the quest log's done animation began (draw → update)
      bool quest_log_was_open = false;               // UI 0xf last frame: shutting it marks the animations seen (FUN_004a28d0)
@@ -5910,6 +6225,36 @@ index caac2c9..55c889b 100644
      int replay_speech = 0;                         // questlast: a quest message to play again
      d2d::rules::Rain rain;                         // the weather (its state lasts the session, like game.exe's)
      std::uint32_t rain_ms = 0;
+diff --git a/apps/d2d/town_automap.hpp b/apps/d2d/town_automap.hpp
+new file mode 100644
+index 0000000..d420215
+--- /dev/null
++++ b/apps/d2d/town_automap.hpp
+@@ -0,0 +1,24 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include <array>
++#include <vector>
++namespace d2d::client {
++struct TownMapCell { int cel,x,y; };
++// Game.exe 1.14d FUN_004591a0: the town maps are tiled sheets,
++// not one centred frame. Coordinates anchor each tile at its bottom left.
++inline std::vector<TownMapCell> town_map_cells(int level,int file,int cx,int cy) {
++    const bool lut=level==40;
++    if(!lut&&level!=103)return {};
++    const int cols=lut?5:2,rows=lut?4:2,w=lut?160:136,h=lut?100:90;
++    const int x=(cx-cy)*8-(cols*w/2+(lut?53:-3));
++    const int y=(cx+cy)*4-rows*h/2-(lut?-81:-50);
++    constexpr std::array<int,11> skip{0,10,15,16,19,20,25,30,35,36,39};
++    std::vector<TownMapCell> out;
++    int cel=lut&&file!=1?20:0;
++    for(int row=0;row<rows;++row)for(int col=0;col<cols;++col,++cel){
++        bool blank=false;if(lut)for(int i:skip)blank|=cel==i;
++        if(!blank)out.push_back({cel,x+col*w,y+row*h});
++    }
++    return out;
++}
++}
 diff --git a/apps/d2d/ui.cpp b/apps/d2d/ui.cpp
 index 2bb8122..9029af1 100644
 --- a/apps/d2d/ui.cpp
@@ -6122,6 +6467,81 @@ index 13d3535..ff53314 100644
          SDL_Texture* wider = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, width_, int(kScreenHeight));
          if (!wider) { d2d::log::error("SDL_CreateTexture: {}", SDL_GetError()); return false; }
          SDL_SetTextureScaleMode(wider, SDL_SCALEMODE_LINEAR);
+diff --git a/apps/d2d/world_audio.hpp b/apps/d2d/world_audio.hpp
+new file mode 100644
+index 0000000..dec1d52
+--- /dev/null
++++ b/apps/d2d/world_audio.hpp
+@@ -0,0 +1,69 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include "audio.hpp"
++#include "scene.hpp"
++#include <world.hpp>
++#include <unordered_map>
++namespace d2d::client {
++inline std::vector<std::string_view> player_states(const Scene&,const View&);
++inline std::vector<std::string_view> monster_states(const Scene&,const Monster&,std::uint32_t,int);
++// Extra client events from the authoritative view. No gameplay RNG is consumed.
++struct WorldAudio {
++ struct History {std::uint32_t seen=0,voice=0,step=0,mode_at=0;float x=0,y=0;std::string mode;bool afraid=false,noticed=false;std::array<std::string_view,16> states{};unsigned count=0;};
++ std::unordered_map<std::uint64_t,History> units;
++ const Level* level=nullptr;std::uint32_t at=~0u;unsigned variant=0;
++ std::array<Audio::WorldLoop,2> loops{};
++ void reset(Audio& audio){units.clear();level=nullptr;at=~0u;audio.world_loops_failed=false;for(auto& ch:audio.world_loops)audio.stop(ch);}
++ void update(const Scene& scene,const View& view,Audio& audio,std::uint32_t now){
++  if(!view.level)return;
++  if(level!=view.level){reset(audio);level=view.level;}
++  if(at==now)return;at=now;loops={};
++  const auto gain=[&](float x,float y){return std::clamp(1.f-std::hypot(x-view.player.x,y-view.player.y)/18.f,0.f,1.f);};
++  const auto emit=[&](int sound,float x,float y,float scale=1.f){if(sound>0)audio.play_sfx(scene,sound,gain(x,y)*scale,int(variant++),std::clamp((x-y-view.player.x+view.player.y)/12.f,-1.f,1.f));};
++  const auto add_loop=[&](int sound,float x,float y,float scale=.3f){
++   if(sound<=0||std::size_t(sound)>=scene.sounds.size()||!scene.sounds[sound].loop)return;
++   Audio::WorldLoop request{sound,gain(x,y)*scale,std::clamp((x-y-view.player.x+view.player.y)/12.f,-1.f,1.f)};if(request.gain<.02f)return;
++   for(auto& loop:loops)if(loop.sound==sound){if(request.gain>loop.gain)loop=request;return;}
++   auto low=loops[0].gain<loops[1].gain?0:1;if(request.gain>loops[low].gain)loops[low]=request;
++  };
++  const auto get=[&](std::uint64_t key)->History*{auto found=units.find(key);if(found==units.end()){if(units.size()>=256)return nullptr;found=units.emplace(key,History{}).first;}found->second.seen=now;return &found->second;};
++  const auto state_events=[&](History& h,std::span<const std::string_view> names,float x,float y){
++   std::array<std::string_view,16> bounded{};unsigned used=0;for(auto name:names)if(!name.empty()&&used<bounded.size()&&std::ranges::find(std::span(bounded.data(),used),name)==std::span(bounded.data(),used).end())bounded[used++]=name;names=std::span(bounded.data(),used);
++   for(auto old:std::span(h.states.data(),h.count))if(std::ranges::find(names,old)==names.end())if(auto state=scene.states.find(std::string(old));state!=scene.states.end())if(auto sound=scene.sound_index.find(state->second.off_sound);sound!=scene.sound_index.end())emit(sound->second,x,y,.65f);
++   for(auto name:names)if(!name.empty()&&std::ranges::find(std::span(h.states.data(),h.count),name)==std::span(h.states.data(),h.count).end())if(auto state=scene.states.find(std::string(name));state!=scene.states.end())if(auto sound=scene.sound_index.find(state->second.on_sound);sound!=scene.sound_index.end())emit(sound->second,x,y,.65f);
++   h.count=0;for(auto name:names)if(!name.empty()&&h.count<h.states.size()&&std::ranges::find(std::span(h.states.data(),h.count),name)==std::span(h.states.data(),h.count).end())h.states[h.count++]=name;
++  };
++  if(auto h=get(1)){auto names=player_states(scene,view);state_events(*h,names,view.player.x,view.player.y);}
++  for(int buff:view.buffs)if(auto skill=scene.skills.get(buff);skill&&skill->progress_sound)add_loop(skill->progress_sound,view.player.x,view.player.y,.35f);
++  const auto actor=[&](std::uint64_t key,const GameData::MonSound* sound,std::string_view mode,std::uint32_t mode_at,float x,float y,bool walking,bool alive,bool extra_modes,bool afraid,bool noticed,std::span<const std::string_view> states){
++   auto h=get(key);if(!h)return;bool fresh=h->mode.empty();state_events(*h,states,x,y);
++   if(sound&&extra_modes&&(fresh||h->mode!=mode||h->mode_at!=mode_at)){
++    if(mode=="DT")emit(sound->death,x,y,.7f);
++    else if(mode=="GH")emit(sound->hit,x,y,.6f);
++    else if(mode=="A1"||mode=="A2"){const unsigned attack=mode=="A2";if(int(variant++%100)<sound->att_prb[attack])emit(sound->attack[attack],x,y,.65f);emit(sound->weapon[attack],x,y,.65f);}
++   }
++   if(sound&&alive){
++    if(sound->init>0&&std::size_t(sound->init)<scene.sounds.size()){if(scene.sounds[sound->init].loop)add_loop(sound->init,x,y,.15f);else if(fresh)emit(sound->init,x,y,.6f);}
++    if(extra_modes&&(fresh||h->mode!=mode||h->mode_at!=mode_at)&&mode.size()==2&&mode[0]=='S'&&mode[1]>='1'&&mode[1]<='4')emit(sound->skill[std::size_t(mode[1]-'1')],x,y,.7f);
++    if(!h->noticed&&noticed&&gain(x,y)>.1f){emit(sound->taunt,x,y,.85f);h->noticed=true;}
++    if(afraid&&!h->afraid)emit(sound->flee,x,y,.5f);
++    if((mode=="NU"||mode=="WL")&&now>=h->voice){if(!fresh)emit(sound->neutral,x,y,.35f);h->voice=now+std::uint32_t(std::max(sound->neutral_ticks,100))*40+(unsigned(key)%31)*40;}
++    if(walking&&now>=h->step&&std::hypot(x-h->x,y-h->y)>.25f){emit(sound->footstep,x,y,.18f);emit(sound->foot_layer,x,y,.18f);h->step=now+200;h->x=x;h->y=y;}
++   }
++   h->mode=mode;h->mode_at=mode_at;h->afraid=afraid;
++  };
++  const auto sound_of=[&](std::string_view name)->const GameData::MonSound*{auto it=scene.mon_sounds.find(std::string(name));return it==scene.mon_sounds.end()?nullptr:&it->second;};
++  const auto npc_sound=[&](const Npc& npc)->const GameData::MonSound*{int type=scene.monsters.row(npc.id);if(type<0){const auto found=std::ranges::find(scene.monsters.types,npc.code,&d2d::rules::MonType::code);if(found!=scene.monsters.types.end())type=int(found-scene.monsters.types.begin());}return type>=0?sound_of(scene.monsters.types[std::size_t(type)].sound):sound_of(npc.id);};
++  for(const auto& monster:view.monsters){const auto& type=scene.monsters.types[std::size_t(monster.type)];auto super=monster.super>=0&&std::size_t(monster.super)<scene.superuniques.size()?scene.superuniques[monster.super].sound:std::string();auto names=monster_states(scene,monster,now,view.aura);actor(0x100000000ull+unsigned(monster.id),sound_of(d2d::rules::boss_sound(type,monster.boss,super)),monster.mode,monster.unit.mode_ms,monster.unit.x,monster.unit.y,monster.unit.walking,monster.alive(),false,monster.afraid,monster.aware,names);}
++  for(std::size_t i=0;i<view.level->npcs.size()&&i<view.npc_states.size();++i){auto& npc=view.level->npcs[i];if(npc.root!="monsters"||view.npc_states[i].hidden)continue;auto& state=view.npc_states[i];actor(0x200000000ull+i,npc_sound(npc),state.mode.empty()?npc.mode:state.mode,state.mode_ms,state.x,state.y,state.walking,true,true,false,false,{});}
++  for(const auto& pet:view.pets){const auto* sound=npc_sound(pet.npc);actor(0x300000000ull+unsigned(pet.id),sound,pet.mode,pet.unit.mode_ms,pet.unit.x,pet.unit.y,pet.unit.walking,pet.mode!="DT"&&pet.mode!="DD",true,false,false,pet.states);}
++  if(view.merc)actor(2,npc_sound(*view.merc->npc),view.merc->mode,view.merc->unit.mode_ms,view.merc->unit.x,view.merc->unit.y,view.merc->unit.walking,view.merc->mode!="DT"&&view.merc->mode!="DD",true,false,false,{});
++  for(const auto& shot:view.missiles)if(shot.info){auto h=get(0x400000000ull+(shot.render_id?shot.render_id:unsigned(shot.born)^unsigned(shot.dir)));if(!h)continue;const bool fresh=h->mode.empty();h->mode="shot";int sound=shot.info->travel_sound;
++   if(shot.info->name.starts_with("icebreak"))sound=0; // shatter already emits one impact in Fight
++   for(const auto name:{"weapon_bow_1","weapon_xbow_1","weapon_throw_1"})if(auto id=scene.sound_index.find(name);id!=scene.sound_index.end()&&id->second==sound)sound=0;
++   if(sound>0&&std::size_t(sound)<scene.sounds.size()){if(scene.sounds[sound].loop)add_loop(sound,shot.x,shot.y);else if(fresh)emit(sound,shot.x,shot.y,.65f);}if(fresh&&shot.info->name=="meteorcenter")emit(shot.info->progress_sound,shot.x,shot.y,.8f);}
++  std::erase_if(units,[&](const auto& pair){return pair.second.seen!=now;});
++  std::array<Audio::WorldLoop,2> active{};unsigned count=0;for(auto loop:loops)if(loop.sound)active[count++]=loop;audio.set_world_loops(scene,std::span(active.data(),count));
++ }
++};
++}
 diff --git a/apps/d2d/world_view.cpp b/apps/d2d/world_view.cpp
 index 08ed03d..5615271 100644
 --- a/apps/d2d/world_view.cpp
@@ -7383,6 +7803,33 @@ index aefa1cd..a61749c 100644
  };
  
  }  // namespace d2d::dcc
+diff --git a/components/dcc/decode_profile.hpp b/components/dcc/decode_profile.hpp
+new file mode 100644
+index 0000000..beae191
+--- /dev/null
++++ b/components/dcc/decode_profile.hpp
+@@ -0,0 +1,21 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include <chrono>
++#include <cstdint>
++namespace d2d::dcc {
++struct DecodeProfile { bool enabled=false;std::uint64_t calls=0,ns=0; };
++inline thread_local DecodeProfile decode_profile;
++#ifndef D2D_MIYOO
++// Frozen-frame developer comparisons; absent from the console decoder.
++inline thread_local bool legacy_pixel_decode=false;
++inline thread_local bool legacy_scratch_init=false;
++inline thread_local bool legacy_row_unpack=false;
++inline thread_local bool legacy_actor_directions=false;
++#endif
++struct DirectionDecodeTimer {
++ bool active=decode_profile.enabled;
++ std::chrono::steady_clock::time_point start;
++ DirectionDecodeTimer(){if(active){start=std::chrono::steady_clock::now();++decode_profile.calls;}}
++ ~DirectionDecodeTimer(){if(active)decode_profile.ns+=std::uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count());}
++};
++}
 diff --git a/components/drlg/maze.hpp b/components/drlg/maze.hpp
 index da144b6..30fc1bf 100644
 --- a/components/drlg/maze.hpp
@@ -14121,6 +14568,92 @@ index f99e183..216ad5d 100644
              if (taken == d2d::rules::Pickup::kNoRoom) {
                  static constexpr std::array<const char*, 7> kCantCarry{ "amazon_cantcarry_1", "sorceress_cantcarry_1", "necromancer_cantcarry_1",
                      "paladin_cantcarry_1", "barbarian_cantcarry_1", "druid_cantcarry_1", "assassin_cant_carry" };
+diff --git a/components/game/merc_inventory.hpp b/components/game/merc_inventory.hpp
+new file mode 100644
+index 0000000..542e07b
+--- /dev/null
++++ b/components/game/merc_inventory.hpp
+@@ -0,0 +1,80 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include "item_text.hpp"
++#include "inventory.hpp"
++namespace d2d::game {
++enum class MercItemResult { Ok, NoMerc, Dead, TooFar, Slot, Type, Identify, Level, Strength, Dexterity };
++inline int merc_act(const GameData& data, const d2d::d2s::Header& header) {
++    for(const auto& h:data.rules.hirelings)if(h.version==100&&h.id==header.merc_type)return h.act;
++    return 0;
++}
++inline bool merc_slot(const GameData& data,const d2d::d2s::Header& header,int slot){
++    using namespace d2d::d2s::body_location;
++    return slot==kHead||slot==kTorso||slot==kRightArm||(slot==kLeftArm&&merc_act(data,header)==3);
++}
++inline d2d::rules::Wearer merc_wearer(const GameData& data,const d2d::d2s::Header& header,const std::vector<d2d::d2s::Item>& items,int excluding=0){
++    using namespace d2d::d2s;
++    const auto base=d2d::rules::merc_stats(data.rules,header.merc_type,header.merc_exp);
++    d2d::rules::Wearer out{-1,base.str,base.dex,base.level};
++    const auto add=[&](const auto& props){for(const auto& p:props){if(p.stat==kStr)out.str+=int(p.value);if(p.stat==kDex)out.dex+=int(p.value);}};
++    std::vector<Item> active;for(const auto& item:items)if(item.location==item_location::kEquipped&&item.slot!=excluding)active.push_back(item);
++    for(const auto& item:active){add(item.props);for(const auto& gem:item.socketed_items)add(socket_props(data,item,gem));add(set_bonus_props(data,active,item));}
++    return out;
++}
++inline MercItemResult merc_can_equip(const GameData& data,const d2d::d2s::Header& header,const std::vector<d2d::d2s::Item>& items,const d2d::d2s::Item& item,int slot){
++    using namespace d2d::d2s;
++    if(!header.expansion()||!header.merc_seed)return MercItemResult::NoMerc;
++    if(!merc_slot(data,header,slot))return MercItemResult::Slot;
++    const int act=merc_act(data,header);const auto* info=d2d::rules::info_of(data.rules,item);
++    if(!info)return MercItemResult::Type;
++    const auto type=data.rules.types.find(info->type);
++    if(type==data.rules.types.end())return MercItemResult::Type;
++    const auto cls=d2d::rules::type_class(data.rules,info->type);
++    if(!cls.empty()&&!(act==5&&slot==body_location::kHead&&cls=="bar"))return MercItemResult::Type;
++    const auto is=[&](const char* t){return d2d::rules::type_is(data.rules,info->type,t);};
++    bool allowed=false;
++    if(slot==body_location::kHead||slot==body_location::kTorso)allowed=info->kind==1&&(type->second.body[0]==slot||type->second.body[1]==slot);
++    else if(slot==body_location::kLeftArm)allowed=act==3&&is("shld");
++    else if(slot==body_location::kRightArm){
++        if(act==1)allowed=is("bow");
++        if(act==2)allowed=is("spea")||is("pole")||is("jave");
++        if(act==3)allowed=is("swor")&&!info->two_handed;
++        if(act==5)allowed=is("swor");
++    }
++    if(!allowed)return MercItemResult::Type;
++    if(!item.identified&&item.quality>=4)return MercItemResult::Identify;
++    const auto wearer=merc_wearer(data,header,items,slot);
++    if(wearer.lvl<required_level(data,item))return MercItemResult::Level;
++    const auto req=[&](int base){return d2d::rules::required_attribute(data.rules,item,base);};
++    if(wearer.str<req(info->req_str))return MercItemResult::Strength;
++    if(wearer.dex<req(info->req_dex))return MercItemResult::Dexterity;
++    return MercItemResult::Ok;
++}
++// One shared cursor: a rejected move changes neither owner nor item identity.
++inline MercItemResult merc_item_move(const GameData& data,const d2d::d2s::Header& header,std::vector<d2d::d2s::Item>& items,std::optional<d2d::d2s::Item>& held,int slot){
++    using namespace d2d::d2s;
++    if(!header.expansion()||!header.merc_seed)return MercItemResult::NoMerc;
++    if(header.merc_dead)return MercItemResult::Dead;
++    if(!merc_slot(data,header,slot))return MercItemResult::Slot;
++    auto it=std::ranges::find_if(items,[&](const Item& i){return i.location==item_location::kEquipped&&i.slot==slot;});
++    if(!held){if(it!=items.end())d2d::rules::pick_up(items,held,std::size_t(it-items.begin()));return MercItemResult::Ok;}
++    const auto result=merc_can_equip(data,header,items,*held,slot);if(result!=MercItemResult::Ok)return result;
++    if(it==items.end()){items.reserve(items.size()+1);items.push_back(std::move(*held));held.reset();it=items.end()-1;}
++    else{std::swap(*held,*it);held->location=item_location::kCursor;held->slot=0;}
++    it->location=item_location::kEquipped;it->slot=slot;it->panel=it->column=it->row=0;
++    return MercItemResult::Ok;
++}
++inline const char* merc_item_message(int code){
++    switch(MercItemResult(code)){
++    case MercItemResult::NoMerc:return "No mercenary hired";
++    case MercItemResult::Dead:return "Resurrect your mercenary first";
++    case MercItemResult::TooFar:return "Mercenary is too far away";
++    case MercItemResult::Slot:case MercItemResult::Type:return "This mercenary cannot use that item";
++    case MercItemResult::Identify:return "Identify the item first";
++    case MercItemResult::Level:return "Mercenary level is too low";
++    case MercItemResult::Strength:return "Not enough strength";
++    case MercItemResult::Dexterity:return "Not enough dexterity";
++    default:return "";
++    }
++}
++}
 diff --git a/components/game/protocol.hpp b/components/game/protocol.hpp
 index d9d3cf6..6c3160f 100644
 --- a/components/game/protocol.hpp
@@ -14378,6 +14911,40 @@ index d489a8f..381b635 100644
              for (int k = u16(); k > 0 && input.ok; --k) store.perm.push_back(input.str());
              for (auto& tab : store.tabs) tab = wire::items(input, *game_data.item_tables);
              store.header = view.header;
+diff --git a/components/game/saved_maxima.hpp b/components/game/saved_maxima.hpp
+new file mode 100644
+index 0000000..bf04180
+--- /dev/null
++++ b/components/game/saved_maxima.hpp
+@@ -0,0 +1,28 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include "gamedata.hpp"
++#include <quests_act3.hpp>
++namespace d2d::game {
++// Old local reloads could subtract the previous session's equipment twice.
++// Restore only impossible deficits or corroborated negative 21-bit wraparound;
++// keep intentional larger/custom maxima. This operates on base save stats.
++inline bool repair_saved_maxima(const GameData& data,const d2d::d2s::Header& header,d2d::d2s::Stats& stats){
++ using namespace d2d::d2s;
++ const auto level=stats.get(kLevel);if(header.cls>=7||level<1||level>99)return false;
++ const auto& start=data.class_start[header.cls];const auto& gain=data.class_gains[header.cls];
++ if(stats.get(kVit)<start.vit||stats.get(kEne)<start.ene)return false;
++ const auto vit=stats.get(kVit)-start.vit,energy=stats.get(kEne)-start.ene;
++ std::array<std::int64_t,3> minimum{
++  std::int64_t(start.vit+start.hpadd)*256+((level-1)*gain.life_per_level+vit*gain.life_per_vit)*64,
++  std::int64_t(start.ene)*256+((level-1)*gain.mana_per_level+energy*gain.mana_per_energy)*64,
++  std::int64_t(start.stamina)*256+((level-1)*gain.stamina_per_level+vit*gain.stamina_per_vit)*64};
++ for(const auto& q:header.quests)if(d2d::rules::quest::bit(q,d2d::rules::GoldenBirdQuest::kQuest,0)&&!d2d::rules::quest::bit(q,d2d::rules::GoldenBirdQuest::kQuest,5))minimum[0]+=20*256;
++ constexpr std::array<int,3> maxima{kMaxLife,kMaxMana,kMaxStamina},current{kLife,kMana,kStamina};
++ constexpr std::int64_t modulus=std::int64_t(1)<<21;bool changed=false;
++ for(unsigned i=0;i<3;++i){auto& value=stats.values[maxima[i]];const auto low=minimum[i];
++  const bool wrapped=low>0&&low<modulus/2&&value>modulus-low&&value<modulus&&stats.get(current[i])<=low;
++  if(value<low||wrapped){value=low;changed=true;}
++ }
++ return changed;
++}
++}
 diff --git a/components/game/world.cpp b/components/game/world.cpp
 index 1600791..07d55fe 100644
 --- a/components/game/world.cpp
@@ -17782,6 +18349,31 @@ index 68ea001..1872edf 100644
              break;
          default: break;
      }
+diff --git a/components/rules/stash_gold.hpp b/components/rules/stash_gold.hpp
+new file mode 100644
+index 0000000..621ce72
+--- /dev/null
++++ b/components/rules/stash_gold.hpp
+@@ -0,0 +1,19 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include <d2s.hpp>
++#include <algorithm>
++#include <cstdint>
++namespace d2d::rules {
++inline constexpr std::int64_t kStashGoldLimit=2500000; // LoD1.14, flat limit since1.13
++inline std::int64_t stash_gold_transfer_limit(const d2d::d2s::Stats& stats,bool withdraw){
++ using namespace d2d::d2s;
++ const auto purse=stats.get(kGold),bank=stats.get(kGoldBank);
++ if(purse<0||bank<0)return 0;
++ const auto carry=std::clamp<std::int64_t>(stats.get(kLevel),1,99)*10000;
++ return withdraw?std::min(bank,std::max<std::int64_t>(carry-purse,0)):std::min(purse,std::max<std::int64_t>(kStashGoldLimit-bank,0));
++}
++inline std::int64_t transfer_stash_gold(d2d::d2s::Stats& stats,int amount,bool withdraw){
++ if(amount<=0)return 0;const auto moved=std::min<std::int64_t>(amount,stash_gold_transfer_limit(stats,withdraw));
++ stats.values[d2d::d2s::kGold]+=withdraw?moved:-moved;stats.values[d2d::d2s::kGoldBank]+=withdraw?-moved:moved;return moved;
++}
++}
 diff --git a/components/rules/uniques.hpp b/components/rules/uniques.hpp
 index 619e6e9..753b3d2 100644
 --- a/components/rules/uniques.hpp
@@ -18033,594 +18625,3 @@ index 1c118a5..b40a9bf 100644
      }
      // A skill-less missile row's own element (FUN_0064b100 ..): brackets,
      // HitShift, length brackets. Claws of Thunder's nova at level 9.
-diff --git a/apps/d2d/corner_hud.hpp b/apps/d2d/corner_hud.hpp
-new file mode 100644
-index 0000000..8c59205
---- /dev/null
-+++ b/apps/d2d/corner_hud.hpp
-@@ -0,0 +1,24 @@
-+// SPDX-License-Identifier: GPL-3.0-or-later
-+#pragma once
-+#include "merc_panel.hpp"
-+namespace d2d::client {
-+inline void draw_corner_hud(std::vector<std::uint8_t>& f,const Scene& scene,const View& view,bool map_open,int merc_life,int merc_max){
-+ const auto& pal=scene.act_pal.entries().empty()?scene.pal:scene.act_pal;
-+ const auto fill=[&](int x,int y,int w,int h,std::array<std::uint8_t,3> c){for(int yy=y;yy<y+h;++yy)for(int xx=x;xx<x+w;++xx){if(xx<0||xx>=800||yy<0||yy>=600)continue;auto*p=f.data()+(yy*800+xx)*4;for(int k=0;k<3;++k)p[k]=c[k];p[3]=255;}};
-+ const bool hired=view.header.merc_seed!=0&&!view.header.merc_dead&&merc_life>0;constexpr int top=12;
-+ if(hired){
-+  fill(12,top,36,42,{137,112,70});fill(14,top+2,32,38,{12,12,12});
-+  static constexpr int icon_class[]{0,3,1,4};const int act=(d2d::game::merc_act(scene,view.header)==2?1:d2d::game::merc_act(scene,view.header)==3?2:d2d::game::merc_act(scene,view.header)==5?3:0);
-+  const auto& original=scene.merc_icons[std::size_t(act)];
-+  const auto& icon=original.frames_per_direction()?original:scene.class_icons[std::size_t(icon_class[act])];
-+  if(icon.frames_per_direction()){const auto& image=icon.frame(0,0);if(image.width&&image.height)for(int y=0;y<30;++y)for(int x=0;x<30;++x){const auto index=image.pixels[std::size_t(y*image.height/30)*image.width+std::size_t(x*image.width/30)];if(index){const auto c=pal[index];auto*p=f.data()+((top+3+y)*800+15+x)*4;p[0]=c.r;p[1]=c.g;p[2]=c.b;}}}
-+  const int hp=merc_max>0?int(std::int64_t(std::clamp(merc_life,0,merc_max))*30/merc_max):0;
-+  fill(15,top+35,30,4,{45,12,12});fill(15,top+35,hp,4,hp<8?std::array<std::uint8_t,3>{200,45,30}:std::array<std::uint8_t,3>{40,170,45});
-+ }
-+ if(map_open&&view.level){
-+  const d2d::font::TextScaleScope scale(100);const d2d::font::TextWeightScope weight(scene.use_readable());const auto& font=scene.readable(scene.font);
-+  const auto text=d2mini::fit_text(font,view.level->name,250,22,100,75,false);
-+  if(!text.lines.empty()){const d2d::font::TextScaleScope fit(text.scale);const int width=font.ink_width(text.lines[0]),y=top;fill(782-width,y-2,width+8,24,{0,0,0});font.draw_tinted(f,800,600,pal,786-width,y,text.lines[0],220,205,166);}
-+ }
-+}
-+}
-diff --git a/apps/d2d/merc_panel.hpp b/apps/d2d/merc_panel.hpp
-new file mode 100644
-index 0000000..0e84338
---- /dev/null
-+++ b/apps/d2d/merc_panel.hpp
-@@ -0,0 +1,85 @@
-+// SPDX-License-Identifier: GPL-3.0-or-later
-+#pragma once
-+#include "scene.hpp"
-+#include "items.hpp"
-+#include "text_layout.hpp"
-+#include <world.hpp>
-+#include <merc_inventory.hpp>
-+namespace d2d::client {
-+inline std::array<int,4> merc_panel_rect(int slot){
-+    namespace b=d2d::d2s::body_location;
-+    if(slot==b::kHead)return {213,65,56,56};
-+    if(slot==b::kTorso)return {213,135,56,87};
-+    if(slot==b::kRightArm)return {98,106,56,114};
-+    if(slot==b::kLeftArm)return {329,106,56,114};
-+    return {};
-+}
-+inline int merc_panel_slot_at(const Scene& scene,const d2d::d2s::Header& h,int x,int y){
-+    for(int slot:{d2d::d2s::body_location::kHead,d2d::d2s::body_location::kTorso,d2d::d2s::body_location::kRightArm,d2d::d2s::body_location::kLeftArm}){
-+        if(!d2d::game::merc_slot(scene,h,slot))continue;
-+        const auto b=merc_panel_rect(slot);if(x>=b[0]&&x<b[0]+b[2]&&y>=b[1]&&y<b[1]+b[3])return slot;
-+    }
-+    return -1;
-+}
-+inline void draw_merc_panel(std::vector<std::uint8_t>& f,const Scene& scene,const View& view,std::string_view name,int mx,int my){
-+    using namespace d2d::d2s;
-+    const auto& pal=scene.act_pal.entries().empty()?scene.pal:scene.act_pal;
-+    const auto fill=[&](int x,int y,int w,int h,std::array<std::uint8_t,3> rgb){
-+        for(int yy=std::max(0,y);yy<std::min(600,y+h);++yy)for(int xx=std::max(0,x);xx<std::min(800,x+w);++xx){auto*p=f.data()+(yy*800+xx)*4;p[0]=rgb[0];p[1]=rgb[1];p[2]=rgb[2];p[3]=255;}
-+    };
-+    if(scene.merc_panel_bg.frames_per_direction()>=4){
-+        const auto& first=scene.merc_panel_bg.frame(0,0);
-+        for(unsigned i=0;i<4;++i)blit_sprite(f,scene.merc_panel_bg.frame(0,i),pal,80+int(i%2)*int(first.width),60+int(i/2)*int(first.height));
-+    }else{fill(80,60,320,432,{117,102,66});fill(83,63,314,426,{28,27,24});}
-+    const d2d::font::TextScaleScope scale(100);
-+    const d2d::font::TextWeightScope weight(scene.use_readable());
-+    const d2d::font::TextContrastScope contrast(true);
-+    const d2d::font::PanelTextScope sharp(g_sharp_panel_text&&g_ui_scale>100,false);
-+    const auto& font=scene.readable(scene.font);
-+    const auto text=[&](std::string_view value,int x,int y,int width,int height=20,bool gold=false){
-+        if(scene.use_readable()&&y>=260){y+=2;if(x==216)x+=2;}
-+        const auto fit=d2mini::fit_text(font,value,width-6,height,scene.use_readable()?90:100,45,false);
-+        const d2d::font::TextScaleScope fitted(fit.scale);
-+        if(!fit.lines.empty()){
-+            const auto bounds=font.ink_bounds(fit.lines[0]);
-+            font.draw_tinted(f,800,600,pal,x+(width-(bounds[2]-bounds[0]))/2-bounds[0],y+(height-(bounds[3]-bounds[1]))/2-bounds[1],fit.lines[0],gold?220:235,gold?191:235,gold?127:235);
-+        }
-+    };
-+    if(!view.header.expansion()||!view.header.merc_seed){text("Mercenary",84,260,151,16,true);text("No mercenary hired",96,285,288);text("Visit a mercenary captain",96,438,250);return;}
-+    const int act=d2d::game::merc_act(scene,view.header);
-+    const auto wearer=d2d::game::merc_wearer(scene,view.header,view.merc_items);
-+    const char* kind=act==1?"Rogue Scout":act==2?"Desert Mercenary":act==3?"Iron Wolf":act==5?"Barbarian":"Mercenary";
-+    text(name.empty()?std::string_view(kind):name,84,260,151,16,true);
-+    text(kind,241,260,151,16);
-+    text(view.header.merc_dead?"Dead":std::format("Life {} / {}",view.merc_sheet.life,view.merc_sheet.max_life),85,289,121,22);
-+    text("Level",216,284,48,14);text(std::to_string(wearer.lvl),216,300,48,14);
-+    text(view.header.merc_dead?"Visit a captain":"Mercenary",273,289,119,22);
-+    const Item* hover=nullptr;std::array<int,4> hover_box{};
-+    for(auto [slot,label]:{std::pair{body_location::kHead,"Helm"},std::pair{body_location::kTorso,"Armor"},std::pair{body_location::kRightArm,"Weapon"},std::pair{body_location::kLeftArm,"Shield"}}){
-+        if(!d2d::game::merc_slot(scene,view.header,slot))continue;
-+        const auto b=merc_panel_rect(slot);const bool over=mx>=b[0]&&mx<b[0]+b[2]&&my>=b[1]&&my<b[1]+b[3];
-+        if(over){
-+            fill(b[0]-2,b[1]-2,b[2]+4,2,{232,195,93});fill(b[0]-2,b[1]+b[3],b[2]+4,2,{232,195,93});
-+            fill(b[0]-2,b[1],2,b[3],{232,195,93});fill(b[0]+b[2],b[1],2,b[3],{232,195,93});
-+        }
-+        const auto item=std::ranges::find_if(view.merc_items,[&](const Item& i){return i.location==item_location::kEquipped&&i.slot==slot;});
-+        if(item==view.merc_items.end()){text(label,b[0]+2,b[1]+b[3]/2-8,b[2]-4,16);continue;}
-+        if(const auto* sprite=scene.item_sprite(*item);sprite&&sprite->frames_per_direction()){
-+            const auto& frame=sprite->frame(0,0);
-+            blit_sprite(f,frame,scene.item_pal(*item,pal),b[0]+(b[2]-int(frame.width))/2,b[1]+(b[3]-int(frame.height))/2);
-+        }
-+        if(over){hover=&*item;hover_box=b;}
-+    }
-+    const auto stat=[&](std::string_view label,std::string value,int column,int row){
-+        const int x=84+column*160,y=326+row*24;text(label,x,y,98,16);text(value,x+103,y,46,16);
-+    };
-+    stat("Strength",std::to_string(wearer.str),0,0);stat("Dexterity",std::to_string(wearer.dex),1,0);
-+    stat("Damage",std::format("{}-{}",view.merc_sheet.min,view.merc_sheet.max),0,1);stat("Defense",std::to_string(view.merc_sheet.def),1,1);
-+    stat("Fire resist.",std::to_string(view.merc_sheet.res[0]),0,2);stat("Light. resist.",std::to_string(view.merc_sheet.res[1]),1,2);
-+    stat("Cold resist.",std::to_string(view.merc_sheet.res[2]),0,3);stat("Poison resist.",std::to_string(view.merc_sheet.res[3]),1,3);
-+    const auto notice=d2d::game::merc_item_message(view.merc_notice);
-+    if(*notice)text(notice,92,438,250,36,true);
-+    else text(act==1?"Bows only":act==2?"Spears / polearms / javelins":act==3?"One-handed swords / shields":"Swords only",92,438,250,36,true);
-+    if(hover){auto lines=item_lines(scene,*hover,wearer.lvl,&wearer);draw_hover_text(f,scene,lines,hover_box[0],hover_box[0]+hover_box[2],hover_box[1]+hover_box[3],hover_box[1]);}
-+}
-+}
-diff --git a/apps/d2d/tile_blit.cpp b/apps/d2d/tile_blit.cpp
-new file mode 100644
-index 0000000..517585f
---- /dev/null
-+++ b/apps/d2d/tile_blit.cpp
-@@ -0,0 +1,187 @@
-+// SPDX-License-Identifier: GPL-3.0-or-later
-+#include "world_view.hpp"
-+#include <cstring>
-+#include "opaque_run.hpp"
-+namespace d2d::client {
-+namespace {
-+inline void paint_opaque_run(std::uint8_t* pixel,const std::uint8_t* indices,int count,const d2d::palette::Rgba* lookup){
-+#ifndef D2D_MIYOO
-+    if(g_bench_legacy_tiles){d2mini::opaque_run_scalar(pixel,indices,count,lookup);return;}
-+#endif
-+    d2mini::opaque_run(pixel,indices,count,lookup);
-+}
-+}
-+
-+void blit_dt1_tile(std::vector<std::uint8_t>& framebuffer,
-+                   const d2d::dt1::Tile& tile,
-+                   const d2d::palette::Palette& pal,
-+                   int screen_x, int screen_y, int alpha_all , const Hole* hole) {
-+    if(d2mini::world_occlusion.hides(screen_x,screen_y,int(tile.width),std::abs(tile.height)))return;
-+    const int screen_w = fb_width(framebuffer);
-+    const int left = std::max(0, -screen_x), right = std::min(int(tile.width), screen_w - screen_x);
-+    const int first = std::max(0, -screen_y), last = std::min(std::abs(tile.height), int(kScreenHeight) - screen_y);
-+    if (left >= right || first >= last) return;
-+    for (int y = first; y < last; ++y) {
-+        const int pixel_y = screen_y + y;
-+        d2mini::world_occlusion.visible(screen_x+left,screen_x+right,screen_y+y,[&](int x0,int x1){
-+        tile.spans(std::size_t(y), x0-screen_x, x1-screen_x, [&](int x, const std::uint8_t* indices, int count) {
-+            auto* pixel = framebuffer.data() + (std::size_t(pixel_y) * screen_w + screen_x + x) * 4;
-+            if (!hole && alpha_all >= 255) {
-+                paint_opaque_run(pixel,indices,count,pal.entries().data());
-+            } else for (int i = 0; i < count; ++i, pixel += 4) {
-+                const auto c = pal[indices[i]];
-+                const int alpha = hole ? hole->alpha(screen_x + x + i, pixel_y, alpha_all) : alpha_all;
-+                pixel[0] = std::uint8_t((pixel[0] * (255 - alpha) + c.r * alpha) / 255);
-+                pixel[1] = std::uint8_t((pixel[1] * (255 - alpha) + c.g * alpha) / 255);
-+                pixel[2] = std::uint8_t((pixel[2] * (255 - alpha) + c.b * alpha) / 255);
-+                if(alpha>=128)pixel[3] = 255;
-+            }
-+        });
-+        });
-+    }
-+}
-+
-+void blit_dt1_shadow(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile,
-+                     const d2d::palette::Palette& pal, int screen_x, int screen_y) {
-+    if(d2mini::world_occlusion.hides(screen_x,screen_y,int(tile.width),std::abs(tile.height)))return;
-+    const int screen_w = fb_width(framebuffer);
-+    const int left = std::max(0, -screen_x), right = std::min(int(tile.width), screen_w - screen_x);
-+    const int first = std::max(0, -screen_y), last = std::min(std::abs(tile.height), int(kScreenHeight) - screen_y);
-+    if (left >= right || first >= last) return;
-+    for (int y = first; y < last; ++y) {
-+        d2mini::world_occlusion.visible(screen_x+left,screen_x+right,screen_y+y,[&](int x0,int x1){
-+        tile.spans(std::size_t(y), x0-screen_x, x1-screen_x, [&](int x, const std::uint8_t* indices, int count) {
-+            auto* pixel = framebuffer.data() + (std::size_t(screen_y + y) * screen_w + screen_x + x) * 4;
-+            for (int i = 0; i < count; ++i, pixel += 4) {
-+                const auto c = pal[indices[i]];
-+                pixel[0] = std::uint8_t((pixel[0] * 3 + c.r) / 4);
-+                pixel[1] = std::uint8_t((pixel[1] * 3 + c.g) / 4);
-+                pixel[2] = std::uint8_t((pixel[2] * 3 + c.b) / 4);
-+            }
-+        });
-+        });
-+    }
-+}
-+
-+void blit_dt1_tile_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile, const Lighting& light,
-+                       int screen_x, int screen_y, int cell_x, int cell_y, int top_x, int top_y, bool floor, int alpha_all , const Hole* hole) {
-+    if(d2mini::world_occlusion.hides(screen_x,screen_y,int(tile.width),std::abs(tile.height)))return;
-+    // The subtile corners round the cell: a tile's pixels reach up to 6
-+    // subtiles before its top corner (tall floors) and 8 past.
-+    if (screen_x >= fb_width(framebuffer) || screen_x + tile.width <= 0
-+        || screen_y >= int(kScreenHeight) || screen_y + std::abs(tile.height) <= 0) return;
-+    constexpr int kPatch = 16, kOrigin = 6;
-+    std::array<float, kPatch * kPatch> corners{};
-+    int low = 255, high = 0;
-+    for (int j = 0; j < kPatch; ++j)
-+        for (int i = 0; i < kPatch; ++i) {
-+            const int value = light.grid.at(cell_x * 5 - kOrigin + i, cell_y * 5 - kOrigin + j);
-+            corners[std::size_t(j * kPatch + i)] = float(value);
-+            low = std::min(low, value); high = std::max(high, value);
-+        }
-+    const auto& pals = *light.pal;
-+    if (low >> 3 == high >> 3) { blit_dt1_tile(framebuffer, tile, pals[std::size_t(low >> 3)], screen_x, screen_y, alpha_all, hole); return; }
-+    // Screen offset from the top corner → subtiles into the cell: dx - dy =
-+    // x / 80 cells, dx + dy = y / 40.
-+    auto level = [&](int offset_x, int offset_y) {
-+        const float along_x = float(offset_x) / (kIsoW / 2), along_y = float(offset_y) / (kIsoH / 2);
-+        const float grid_a = std::clamp((along_y + along_x) * 2.5f + kOrigin, 0.f, kPatch - 1.001f), grid_b = std::clamp((along_y - along_x) * 2.5f + kOrigin, 0.f, kPatch - 1.001f);
-+        const int column = int(grid_a), row = int(grid_b);
-+        const float frac_a = grid_a - float(column), fb2 = grid_b - float(row);
-+        const float* corner = &corners[std::size_t(row * kPatch + column)];
-+        return std::size_t(int((corner[0] + (corner[1] - corner[0]) * frac_a) * (1 - fb2) + (corner[kPatch] + (corner[kPatch + 1] - corner[kPatch]) * frac_a) * fb2) >> 3);
-+    };
-+    // Wall lighting depends only on the screen column; reuse it across rows.
-+    // Zero means not sampled yet, levels 0..31 are stored as 1..32.
-+    if(!g_fast_render){
-+    std::array<std::uint8_t, kScreenWidth> wall_levels{};
-+    const int screen_w = fb_width(framebuffer);
-+    const int left = std::max(0, -screen_x), right = std::min(int(tile.width), screen_w - screen_x);
-+    const int first = std::max(0, -screen_y), last = std::min(std::abs(tile.height), int(kScreenHeight) - screen_y);
-+    for (int y = first; y < last; ++y) {
-+        const int pixel_y = screen_y + y;
-+        int last_group = INT32_MIN; std::size_t cached_light = 0;
-+        d2mini::world_occlusion.visible(screen_x+left,screen_x+right,screen_y+y,[&](int x0,int x1){
-+        tile.spans(std::size_t(y), x0-screen_x, x1-screen_x, [&](int x, const std::uint8_t* indices, int count) {
-+            auto* pixel = framebuffer.data() + (std::size_t(pixel_y) * screen_w + screen_x + x) * 4;
-+            for (int i = 0; i < count; ++i, pixel += 4) {
-+                const int pixel_x = screen_x + x + i;
-+                const int group = g_fast_render ? (pixel_x & ~3) : pixel_x;
-+                if (group != last_group) {
-+                    if (floor) cached_light = level(group - top_x, (g_fast_render ? (pixel_y & ~1) : pixel_y) - top_y);
-+                    else if (std::size_t(group) >= wall_levels.size()) cached_light = level(group - top_x, kIsoH / 2);
-+                    else {
-+                        auto& sample = wall_levels[std::size_t(group)];
-+                        if (!sample) sample = std::uint8_t(level(group - top_x, kIsoH / 2) + 1);
-+                        cached_light = sample - 1;
-+                    }
-+                    last_group = group;
-+                }
-+                auto col = pals[cached_light][indices[i]];
-+                if (!hole && alpha_all >= 255) {col.a = 255; std::memcpy(pixel, &col, 4);}
-+                else {
-+                    const int alpha = hole ? hole->alpha(pixel_x, pixel_y, alpha_all) : alpha_all;
-+                    pixel[0] = std::uint8_t((pixel[0] * (255 - alpha) + col.r * alpha) / 255);
-+                    pixel[1] = std::uint8_t((pixel[1] * (255 - alpha) + col.g * alpha) / 255);
-+                    pixel[2] = std::uint8_t((pixel[2] * (255 - alpha) + col.b * alpha) / 255);
-+                    if(alpha>=128)pixel[3] = 255;
-+                }
-+            }
-+        });
-+        });
-+    }
-+        return;
-+    }
-+    std::array<std::uint8_t,kScreenWidth> wall_levels{};
-+    // Fast lighting samples one level per four screen pixels, so its cache
-+    // needs one byte per group rather than one byte per pixel.
-+    std::array<std::uint8_t,(kScreenWidth+3)/4> floor_levels{};
-+#ifndef D2D_MIYOO
-+    std::array<std::uint8_t,kScreenWidth> legacy_floor_levels{};
-+#endif
-+    int floor_row=INT32_MIN;
-+    const int screen_w = fb_width(framebuffer);
-+    const int left = std::max(0, -screen_x), right = std::min(int(tile.width), screen_w - screen_x);
-+    const int first = std::max(0, -screen_y), last = std::min(std::abs(tile.height), int(kScreenHeight) - screen_y);
-+    for (int y = first; y < last; ++y) {
-+        const int pixel_y = screen_y + y;
-+        const int sampled_y=g_fast_render?(pixel_y&~1):pixel_y;
-+        if(floor&&g_fast_render&&floor_row!=sampled_y){
-+#ifndef D2D_MIYOO
-+            if(g_bench_legacy_light_cache)legacy_floor_levels.fill(0);else
-+#endif
-+            floor_levels.fill(0);floor_row=sampled_y;
-+        }
-+        const auto sampled_level=[&](int group){
-+            if(!floor){if(std::size_t(group)>=wall_levels.size())return level(group-top_x,kIsoH/2);auto& cached=wall_levels[std::size_t(group)];if(!cached)cached=std::uint8_t(level(group-top_x,kIsoH/2)+1);return std::size_t(cached-1);}
-+            if(g_fast_render&&group>=0&&group<int(kScreenWidth)){
-+#ifndef D2D_MIYOO
-+                if(g_bench_legacy_light_cache){auto& cached=legacy_floor_levels[std::size_t(group)];if(!cached)cached=std::uint8_t(level(group-top_x,sampled_y-top_y)+1);return std::size_t(cached-1);}
-+#endif
-+                auto& cached=floor_levels[std::size_t(group/4)];if(!cached)cached=std::uint8_t(level(group-top_x,sampled_y-top_y)+1);return std::size_t(cached-1);
-+            }
-+            return level(group-top_x,sampled_y-top_y);
-+        };
-+        d2mini::world_occlusion.visible(screen_x+left,screen_x+right,pixel_y,[&](int x0,int x1){
-+        tile.spans(std::size_t(y),x0-screen_x,x1-screen_x,[&](int x,const std::uint8_t* indices,int count){
-+            auto* pixel=framebuffer.data()+(std::size_t(pixel_y)*screen_w+screen_x+x)*4;
-+            if(!hole&&alpha_all>=255&&g_fast_render){
-+                int i=0;while(i<count){const int px=screen_x+x+i,group=g_fast_render?(px&~3):px;
-+                    const int end=g_fast_render?std::min(count,i+4-(px&3)):i+1;
-+                    const auto* lookup=pals[sampled_level(group)].entries().data();
-+                    paint_opaque_run(pixel,indices+i,end-i,lookup);pixel+=(end-i)*4;i=end;
-+                }
-+            }else{
-+                int previous=INT32_MIN;std::size_t sample=0;
-+                for(int i=0;i<count;++i,pixel+=4){const int px=screen_x+x+i,group=g_fast_render?(px&~3):px;
-+                    if(group!=previous){sample=sampled_level(group);previous=group;}
-+                    auto c=pals[sample][indices[i]];if(!hole&&alpha_all>=255){c.a=255;std::memcpy(pixel,&c,4);continue;}const int alpha=hole?hole->alpha(px,pixel_y,alpha_all):alpha_all;
-+                    pixel[0]=std::uint8_t((pixel[0]*(255-alpha)+c.r*alpha)/255);pixel[1]=std::uint8_t((pixel[1]*(255-alpha)+c.g*alpha)/255);pixel[2]=std::uint8_t((pixel[2]*(255-alpha)+c.b*alpha)/255);if(alpha>=128)pixel[3]=255;
-+                }
-+            }
-+        });
-+        });
-+    }
-+}
-+
-+}
-diff --git a/apps/d2d/town_automap.hpp b/apps/d2d/town_automap.hpp
-new file mode 100644
-index 0000000..d420215
---- /dev/null
-+++ b/apps/d2d/town_automap.hpp
-@@ -0,0 +1,24 @@
-+// SPDX-License-Identifier: GPL-3.0-or-later
-+#pragma once
-+#include <array>
-+#include <vector>
-+namespace d2d::client {
-+struct TownMapCell { int cel,x,y; };
-+// Game.exe 1.14d FUN_004591a0: the town maps are tiled sheets,
-+// not one centred frame. Coordinates anchor each tile at its bottom left.
-+inline std::vector<TownMapCell> town_map_cells(int level,int file,int cx,int cy) {
-+    const bool lut=level==40;
-+    if(!lut&&level!=103)return {};
-+    const int cols=lut?5:2,rows=lut?4:2,w=lut?160:136,h=lut?100:90;
-+    const int x=(cx-cy)*8-(cols*w/2+(lut?53:-3));
-+    const int y=(cx+cy)*4-rows*h/2-(lut?-81:-50);
-+    constexpr std::array<int,11> skip{0,10,15,16,19,20,25,30,35,36,39};
-+    std::vector<TownMapCell> out;
-+    int cel=lut&&file!=1?20:0;
-+    for(int row=0;row<rows;++row)for(int col=0;col<cols;++col,++cel){
-+        bool blank=false;if(lut)for(int i:skip)blank|=cel==i;
-+        if(!blank)out.push_back({cel,x+col*w,y+row*h});
-+    }
-+    return out;
-+}
-+}
-diff --git a/apps/d2d/world_audio.hpp b/apps/d2d/world_audio.hpp
-new file mode 100644
-index 0000000..dec1d52
---- /dev/null
-+++ b/apps/d2d/world_audio.hpp
-@@ -0,0 +1,69 @@
-+// SPDX-License-Identifier: GPL-3.0-or-later
-+#pragma once
-+#include "audio.hpp"
-+#include "scene.hpp"
-+#include <world.hpp>
-+#include <unordered_map>
-+namespace d2d::client {
-+inline std::vector<std::string_view> player_states(const Scene&,const View&);
-+inline std::vector<std::string_view> monster_states(const Scene&,const Monster&,std::uint32_t,int);
-+// Extra client events from the authoritative view. No gameplay RNG is consumed.
-+struct WorldAudio {
-+ struct History {std::uint32_t seen=0,voice=0,step=0,mode_at=0;float x=0,y=0;std::string mode;bool afraid=false,noticed=false;std::array<std::string_view,16> states{};unsigned count=0;};
-+ std::unordered_map<std::uint64_t,History> units;
-+ const Level* level=nullptr;std::uint32_t at=~0u;unsigned variant=0;
-+ std::array<Audio::WorldLoop,2> loops{};
-+ void reset(Audio& audio){units.clear();level=nullptr;at=~0u;audio.world_loops_failed=false;for(auto& ch:audio.world_loops)audio.stop(ch);}
-+ void update(const Scene& scene,const View& view,Audio& audio,std::uint32_t now){
-+  if(!view.level)return;
-+  if(level!=view.level){reset(audio);level=view.level;}
-+  if(at==now)return;at=now;loops={};
-+  const auto gain=[&](float x,float y){return std::clamp(1.f-std::hypot(x-view.player.x,y-view.player.y)/18.f,0.f,1.f);};
-+  const auto emit=[&](int sound,float x,float y,float scale=1.f){if(sound>0)audio.play_sfx(scene,sound,gain(x,y)*scale,int(variant++),std::clamp((x-y-view.player.x+view.player.y)/12.f,-1.f,1.f));};
-+  const auto add_loop=[&](int sound,float x,float y,float scale=.3f){
-+   if(sound<=0||std::size_t(sound)>=scene.sounds.size()||!scene.sounds[sound].loop)return;
-+   Audio::WorldLoop request{sound,gain(x,y)*scale,std::clamp((x-y-view.player.x+view.player.y)/12.f,-1.f,1.f)};if(request.gain<.02f)return;
-+   for(auto& loop:loops)if(loop.sound==sound){if(request.gain>loop.gain)loop=request;return;}
-+   auto low=loops[0].gain<loops[1].gain?0:1;if(request.gain>loops[low].gain)loops[low]=request;
-+  };
-+  const auto get=[&](std::uint64_t key)->History*{auto found=units.find(key);if(found==units.end()){if(units.size()>=256)return nullptr;found=units.emplace(key,History{}).first;}found->second.seen=now;return &found->second;};
-+  const auto state_events=[&](History& h,std::span<const std::string_view> names,float x,float y){
-+   std::array<std::string_view,16> bounded{};unsigned used=0;for(auto name:names)if(!name.empty()&&used<bounded.size()&&std::ranges::find(std::span(bounded.data(),used),name)==std::span(bounded.data(),used).end())bounded[used++]=name;names=std::span(bounded.data(),used);
-+   for(auto old:std::span(h.states.data(),h.count))if(std::ranges::find(names,old)==names.end())if(auto state=scene.states.find(std::string(old));state!=scene.states.end())if(auto sound=scene.sound_index.find(state->second.off_sound);sound!=scene.sound_index.end())emit(sound->second,x,y,.65f);
-+   for(auto name:names)if(!name.empty()&&std::ranges::find(std::span(h.states.data(),h.count),name)==std::span(h.states.data(),h.count).end())if(auto state=scene.states.find(std::string(name));state!=scene.states.end())if(auto sound=scene.sound_index.find(state->second.on_sound);sound!=scene.sound_index.end())emit(sound->second,x,y,.65f);
-+   h.count=0;for(auto name:names)if(!name.empty()&&h.count<h.states.size()&&std::ranges::find(std::span(h.states.data(),h.count),name)==std::span(h.states.data(),h.count).end())h.states[h.count++]=name;
-+  };
-+  if(auto h=get(1)){auto names=player_states(scene,view);state_events(*h,names,view.player.x,view.player.y);}
-+  for(int buff:view.buffs)if(auto skill=scene.skills.get(buff);skill&&skill->progress_sound)add_loop(skill->progress_sound,view.player.x,view.player.y,.35f);
-+  const auto actor=[&](std::uint64_t key,const GameData::MonSound* sound,std::string_view mode,std::uint32_t mode_at,float x,float y,bool walking,bool alive,bool extra_modes,bool afraid,bool noticed,std::span<const std::string_view> states){
-+   auto h=get(key);if(!h)return;bool fresh=h->mode.empty();state_events(*h,states,x,y);
-+   if(sound&&extra_modes&&(fresh||h->mode!=mode||h->mode_at!=mode_at)){
-+    if(mode=="DT")emit(sound->death,x,y,.7f);
-+    else if(mode=="GH")emit(sound->hit,x,y,.6f);
-+    else if(mode=="A1"||mode=="A2"){const unsigned attack=mode=="A2";if(int(variant++%100)<sound->att_prb[attack])emit(sound->attack[attack],x,y,.65f);emit(sound->weapon[attack],x,y,.65f);}
-+   }
-+   if(sound&&alive){
-+    if(sound->init>0&&std::size_t(sound->init)<scene.sounds.size()){if(scene.sounds[sound->init].loop)add_loop(sound->init,x,y,.15f);else if(fresh)emit(sound->init,x,y,.6f);}
-+    if(extra_modes&&(fresh||h->mode!=mode||h->mode_at!=mode_at)&&mode.size()==2&&mode[0]=='S'&&mode[1]>='1'&&mode[1]<='4')emit(sound->skill[std::size_t(mode[1]-'1')],x,y,.7f);
-+    if(!h->noticed&&noticed&&gain(x,y)>.1f){emit(sound->taunt,x,y,.85f);h->noticed=true;}
-+    if(afraid&&!h->afraid)emit(sound->flee,x,y,.5f);
-+    if((mode=="NU"||mode=="WL")&&now>=h->voice){if(!fresh)emit(sound->neutral,x,y,.35f);h->voice=now+std::uint32_t(std::max(sound->neutral_ticks,100))*40+(unsigned(key)%31)*40;}
-+    if(walking&&now>=h->step&&std::hypot(x-h->x,y-h->y)>.25f){emit(sound->footstep,x,y,.18f);emit(sound->foot_layer,x,y,.18f);h->step=now+200;h->x=x;h->y=y;}
-+   }
-+   h->mode=mode;h->mode_at=mode_at;h->afraid=afraid;
-+  };
-+  const auto sound_of=[&](std::string_view name)->const GameData::MonSound*{auto it=scene.mon_sounds.find(std::string(name));return it==scene.mon_sounds.end()?nullptr:&it->second;};
-+  const auto npc_sound=[&](const Npc& npc)->const GameData::MonSound*{int type=scene.monsters.row(npc.id);if(type<0){const auto found=std::ranges::find(scene.monsters.types,npc.code,&d2d::rules::MonType::code);if(found!=scene.monsters.types.end())type=int(found-scene.monsters.types.begin());}return type>=0?sound_of(scene.monsters.types[std::size_t(type)].sound):sound_of(npc.id);};
-+  for(const auto& monster:view.monsters){const auto& type=scene.monsters.types[std::size_t(monster.type)];auto super=monster.super>=0&&std::size_t(monster.super)<scene.superuniques.size()?scene.superuniques[monster.super].sound:std::string();auto names=monster_states(scene,monster,now,view.aura);actor(0x100000000ull+unsigned(monster.id),sound_of(d2d::rules::boss_sound(type,monster.boss,super)),monster.mode,monster.unit.mode_ms,monster.unit.x,monster.unit.y,monster.unit.walking,monster.alive(),false,monster.afraid,monster.aware,names);}
-+  for(std::size_t i=0;i<view.level->npcs.size()&&i<view.npc_states.size();++i){auto& npc=view.level->npcs[i];if(npc.root!="monsters"||view.npc_states[i].hidden)continue;auto& state=view.npc_states[i];actor(0x200000000ull+i,npc_sound(npc),state.mode.empty()?npc.mode:state.mode,state.mode_ms,state.x,state.y,state.walking,true,true,false,false,{});}
-+  for(const auto& pet:view.pets){const auto* sound=npc_sound(pet.npc);actor(0x300000000ull+unsigned(pet.id),sound,pet.mode,pet.unit.mode_ms,pet.unit.x,pet.unit.y,pet.unit.walking,pet.mode!="DT"&&pet.mode!="DD",true,false,false,pet.states);}
-+  if(view.merc)actor(2,npc_sound(*view.merc->npc),view.merc->mode,view.merc->unit.mode_ms,view.merc->unit.x,view.merc->unit.y,view.merc->unit.walking,view.merc->mode!="DT"&&view.merc->mode!="DD",true,false,false,{});
-+  for(const auto& shot:view.missiles)if(shot.info){auto h=get(0x400000000ull+(shot.render_id?shot.render_id:unsigned(shot.born)^unsigned(shot.dir)));if(!h)continue;const bool fresh=h->mode.empty();h->mode="shot";int sound=shot.info->travel_sound;
-+   if(shot.info->name.starts_with("icebreak"))sound=0; // shatter already emits one impact in Fight
-+   for(const auto name:{"weapon_bow_1","weapon_xbow_1","weapon_throw_1"})if(auto id=scene.sound_index.find(name);id!=scene.sound_index.end()&&id->second==sound)sound=0;
-+   if(sound>0&&std::size_t(sound)<scene.sounds.size()){if(scene.sounds[sound].loop)add_loop(sound,shot.x,shot.y);else if(fresh)emit(sound,shot.x,shot.y,.65f);}if(fresh&&shot.info->name=="meteorcenter")emit(shot.info->progress_sound,shot.x,shot.y,.8f);}
-+  std::erase_if(units,[&](const auto& pair){return pair.second.seen!=now;});
-+  std::array<Audio::WorldLoop,2> active{};unsigned count=0;for(auto loop:loops)if(loop.sound)active[count++]=loop;audio.set_world_loops(scene,std::span(active.data(),count));
-+ }
-+};
-+}
-diff --git a/components/dcc/decode_profile.hpp b/components/dcc/decode_profile.hpp
-new file mode 100644
-index 0000000..beae191
---- /dev/null
-+++ b/components/dcc/decode_profile.hpp
-@@ -0,0 +1,21 @@
-+// SPDX-License-Identifier: GPL-3.0-or-later
-+#pragma once
-+#include <chrono>
-+#include <cstdint>
-+namespace d2d::dcc {
-+struct DecodeProfile { bool enabled=false;std::uint64_t calls=0,ns=0; };
-+inline thread_local DecodeProfile decode_profile;
-+#ifndef D2D_MIYOO
-+// Frozen-frame developer comparisons; absent from the console decoder.
-+inline thread_local bool legacy_pixel_decode=false;
-+inline thread_local bool legacy_scratch_init=false;
-+inline thread_local bool legacy_row_unpack=false;
-+inline thread_local bool legacy_actor_directions=false;
-+#endif
-+struct DirectionDecodeTimer {
-+ bool active=decode_profile.enabled;
-+ std::chrono::steady_clock::time_point start;
-+ DirectionDecodeTimer(){if(active){start=std::chrono::steady_clock::now();++decode_profile.calls;}}
-+ ~DirectionDecodeTimer(){if(active)decode_profile.ns+=std::uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count());}
-+};
-+}
-diff --git a/components/game/merc_inventory.hpp b/components/game/merc_inventory.hpp
-new file mode 100644
-index 0000000..542e07b
---- /dev/null
-+++ b/components/game/merc_inventory.hpp
-@@ -0,0 +1,80 @@
-+// SPDX-License-Identifier: GPL-3.0-or-later
-+#pragma once
-+#include "item_text.hpp"
-+#include "inventory.hpp"
-+namespace d2d::game {
-+enum class MercItemResult { Ok, NoMerc, Dead, TooFar, Slot, Type, Identify, Level, Strength, Dexterity };
-+inline int merc_act(const GameData& data, const d2d::d2s::Header& header) {
-+    for(const auto& h:data.rules.hirelings)if(h.version==100&&h.id==header.merc_type)return h.act;
-+    return 0;
-+}
-+inline bool merc_slot(const GameData& data,const d2d::d2s::Header& header,int slot){
-+    using namespace d2d::d2s::body_location;
-+    return slot==kHead||slot==kTorso||slot==kRightArm||(slot==kLeftArm&&merc_act(data,header)==3);
-+}
-+inline d2d::rules::Wearer merc_wearer(const GameData& data,const d2d::d2s::Header& header,const std::vector<d2d::d2s::Item>& items,int excluding=0){
-+    using namespace d2d::d2s;
-+    const auto base=d2d::rules::merc_stats(data.rules,header.merc_type,header.merc_exp);
-+    d2d::rules::Wearer out{-1,base.str,base.dex,base.level};
-+    const auto add=[&](const auto& props){for(const auto& p:props){if(p.stat==kStr)out.str+=int(p.value);if(p.stat==kDex)out.dex+=int(p.value);}};
-+    std::vector<Item> active;for(const auto& item:items)if(item.location==item_location::kEquipped&&item.slot!=excluding)active.push_back(item);
-+    for(const auto& item:active){add(item.props);for(const auto& gem:item.socketed_items)add(socket_props(data,item,gem));add(set_bonus_props(data,active,item));}
-+    return out;
-+}
-+inline MercItemResult merc_can_equip(const GameData& data,const d2d::d2s::Header& header,const std::vector<d2d::d2s::Item>& items,const d2d::d2s::Item& item,int slot){
-+    using namespace d2d::d2s;
-+    if(!header.expansion()||!header.merc_seed)return MercItemResult::NoMerc;
-+    if(!merc_slot(data,header,slot))return MercItemResult::Slot;
-+    const int act=merc_act(data,header);const auto* info=d2d::rules::info_of(data.rules,item);
-+    if(!info)return MercItemResult::Type;
-+    const auto type=data.rules.types.find(info->type);
-+    if(type==data.rules.types.end())return MercItemResult::Type;
-+    const auto cls=d2d::rules::type_class(data.rules,info->type);
-+    if(!cls.empty()&&!(act==5&&slot==body_location::kHead&&cls=="bar"))return MercItemResult::Type;
-+    const auto is=[&](const char* t){return d2d::rules::type_is(data.rules,info->type,t);};
-+    bool allowed=false;
-+    if(slot==body_location::kHead||slot==body_location::kTorso)allowed=info->kind==1&&(type->second.body[0]==slot||type->second.body[1]==slot);
-+    else if(slot==body_location::kLeftArm)allowed=act==3&&is("shld");
-+    else if(slot==body_location::kRightArm){
-+        if(act==1)allowed=is("bow");
-+        if(act==2)allowed=is("spea")||is("pole")||is("jave");
-+        if(act==3)allowed=is("swor")&&!info->two_handed;
-+        if(act==5)allowed=is("swor");
-+    }
-+    if(!allowed)return MercItemResult::Type;
-+    if(!item.identified&&item.quality>=4)return MercItemResult::Identify;
-+    const auto wearer=merc_wearer(data,header,items,slot);
-+    if(wearer.lvl<required_level(data,item))return MercItemResult::Level;
-+    const auto req=[&](int base){return d2d::rules::required_attribute(data.rules,item,base);};
-+    if(wearer.str<req(info->req_str))return MercItemResult::Strength;
-+    if(wearer.dex<req(info->req_dex))return MercItemResult::Dexterity;
-+    return MercItemResult::Ok;
-+}
-+// One shared cursor: a rejected move changes neither owner nor item identity.
-+inline MercItemResult merc_item_move(const GameData& data,const d2d::d2s::Header& header,std::vector<d2d::d2s::Item>& items,std::optional<d2d::d2s::Item>& held,int slot){
-+    using namespace d2d::d2s;
-+    if(!header.expansion()||!header.merc_seed)return MercItemResult::NoMerc;
-+    if(header.merc_dead)return MercItemResult::Dead;
-+    if(!merc_slot(data,header,slot))return MercItemResult::Slot;
-+    auto it=std::ranges::find_if(items,[&](const Item& i){return i.location==item_location::kEquipped&&i.slot==slot;});
-+    if(!held){if(it!=items.end())d2d::rules::pick_up(items,held,std::size_t(it-items.begin()));return MercItemResult::Ok;}
-+    const auto result=merc_can_equip(data,header,items,*held,slot);if(result!=MercItemResult::Ok)return result;
-+    if(it==items.end()){items.reserve(items.size()+1);items.push_back(std::move(*held));held.reset();it=items.end()-1;}
-+    else{std::swap(*held,*it);held->location=item_location::kCursor;held->slot=0;}
-+    it->location=item_location::kEquipped;it->slot=slot;it->panel=it->column=it->row=0;
-+    return MercItemResult::Ok;
-+}
-+inline const char* merc_item_message(int code){
-+    switch(MercItemResult(code)){
-+    case MercItemResult::NoMerc:return "No mercenary hired";
-+    case MercItemResult::Dead:return "Resurrect your mercenary first";
-+    case MercItemResult::TooFar:return "Mercenary is too far away";
-+    case MercItemResult::Slot:case MercItemResult::Type:return "This mercenary cannot use that item";
-+    case MercItemResult::Identify:return "Identify the item first";
-+    case MercItemResult::Level:return "Mercenary level is too low";
-+    case MercItemResult::Strength:return "Not enough strength";
-+    case MercItemResult::Dexterity:return "Not enough dexterity";
-+    default:return "";
-+    }
-+}
-+}
-diff --git a/components/game/saved_maxima.hpp b/components/game/saved_maxima.hpp
-new file mode 100644
-index 0000000..bf04180
---- /dev/null
-+++ b/components/game/saved_maxima.hpp
-@@ -0,0 +1,28 @@
-+// SPDX-License-Identifier: GPL-3.0-or-later
-+#pragma once
-+#include "gamedata.hpp"
-+#include <quests_act3.hpp>
-+namespace d2d::game {
-+// Old local reloads could subtract the previous session's equipment twice.
-+// Restore only impossible deficits or corroborated negative 21-bit wraparound;
-+// keep intentional larger/custom maxima. This operates on base save stats.
-+inline bool repair_saved_maxima(const GameData& data,const d2d::d2s::Header& header,d2d::d2s::Stats& stats){
-+ using namespace d2d::d2s;
-+ const auto level=stats.get(kLevel);if(header.cls>=7||level<1||level>99)return false;
-+ const auto& start=data.class_start[header.cls];const auto& gain=data.class_gains[header.cls];
-+ if(stats.get(kVit)<start.vit||stats.get(kEne)<start.ene)return false;
-+ const auto vit=stats.get(kVit)-start.vit,energy=stats.get(kEne)-start.ene;
-+ std::array<std::int64_t,3> minimum{
-+  std::int64_t(start.vit+start.hpadd)*256+((level-1)*gain.life_per_level+vit*gain.life_per_vit)*64,
-+  std::int64_t(start.ene)*256+((level-1)*gain.mana_per_level+energy*gain.mana_per_energy)*64,
-+  std::int64_t(start.stamina)*256+((level-1)*gain.stamina_per_level+vit*gain.stamina_per_vit)*64};
-+ for(const auto& q:header.quests)if(d2d::rules::quest::bit(q,d2d::rules::GoldenBirdQuest::kQuest,0)&&!d2d::rules::quest::bit(q,d2d::rules::GoldenBirdQuest::kQuest,5))minimum[0]+=20*256;
-+ constexpr std::array<int,3> maxima{kMaxLife,kMaxMana,kMaxStamina},current{kLife,kMana,kStamina};
-+ constexpr std::int64_t modulus=std::int64_t(1)<<21;bool changed=false;
-+ for(unsigned i=0;i<3;++i){auto& value=stats.values[maxima[i]];const auto low=minimum[i];
-+  const bool wrapped=low>0&&low<modulus/2&&value>modulus-low&&value<modulus&&stats.get(current[i])<=low;
-+  if(value<low||wrapped){value=low;changed=true;}
-+ }
-+ return changed;
-+}
-+}
-diff --git a/components/rules/stash_gold.hpp b/components/rules/stash_gold.hpp
-new file mode 100644
-index 0000000..621ce72
---- /dev/null
-+++ b/components/rules/stash_gold.hpp
-@@ -0,0 +1,19 @@
-+// SPDX-License-Identifier: GPL-3.0-or-later
-+#pragma once
-+#include <d2s.hpp>
-+#include <algorithm>
-+#include <cstdint>
-+namespace d2d::rules {
-+inline constexpr std::int64_t kStashGoldLimit=2500000; // LoD1.14, flat limit since1.13
-+inline std::int64_t stash_gold_transfer_limit(const d2d::d2s::Stats& stats,bool withdraw){
-+ using namespace d2d::d2s;
-+ const auto purse=stats.get(kGold),bank=stats.get(kGoldBank);
-+ if(purse<0||bank<0)return 0;
-+ const auto carry=std::clamp<std::int64_t>(stats.get(kLevel),1,99)*10000;
-+ return withdraw?std::min(bank,std::max<std::int64_t>(carry-purse,0)):std::min(purse,std::max<std::int64_t>(kStashGoldLimit-bank,0));
-+}
-+inline std::int64_t transfer_stash_gold(d2d::d2s::Stats& stats,int amount,bool withdraw){
-+ if(amount<=0)return 0;const auto moved=std::min<std::int64_t>(amount,stash_gold_transfer_limit(stats,withdraw));
-+ stats.values[d2d::d2s::kGold]+=withdraw?moved:-moved;stats.values[d2d::d2s::kGoldBank]+=withdraw?-moved:moved;return moved;
-+}
-+}
