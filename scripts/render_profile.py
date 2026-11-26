@@ -43,9 +43,19 @@ for hero in a.heroes.split(','):
      if alive:
       chosen=max(alive,key=lambda x:sum(math.hypot(float(x[1])-float(y[1]),float(x[2])-float(y[2]))<6 for y in alive))
       cmd('debug warp '+chosen[1]+' '+chosen[2]);frames(8)
+    level=cmd('debug level').split()
+    x,y=map(float,level[2:4])
+    monsters=[line.split('\t') for line in cmd('monsters').splitlines()]
+    nearby=sum(len(m)>6 and int(m[5].split('/')[0])>0 and
+               math.hypot(float(m[1])-x,float(m[2])-y)<6 for m in monsters)
+    if nearby<2:
+     rows.append({'hero':hero,'place':place,'samples':[],'living_nearby':nearby,
+                  'skipped':'fewer than two living monsters within six tiles'})
+     continue
    samples=[]
    for _ in range(a.samples):samples.append({k:int(v)for k,v in re.findall(r'(\w+)=(\d+)',cmd(f'benchmark {a.frames} '+a.mode))})
    row={'hero':hero,'place':place,'level':cmd('debug level'),'state':cmd('state'),'samples':samples};rows.append(row)
+   if place=='pack':row['living_nearby']=nearby
    import statistics
    med={k:statistics.median(x[k]for x in samples)for k in samples[0]};row['median']=med
    print(hero,place,'total',med['current_total_us'],'shadow pixels%',round(100*med['current_shadow_pixels_us']/med['current_total_us'],2),'whole shadow%',round(100*med['current_shadows_us']/med['current_total_us'],2),'decode%',round(100*med['current_decode_us']/med['current_total_us'],2),'paired speedup',med.get('paired_speedup_milli',0)/1000,'decodes',med['current_decodes'],'units',med['current_units'],flush=True)
