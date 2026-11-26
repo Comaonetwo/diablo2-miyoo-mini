@@ -1004,7 +1004,7 @@ index 8a9004a..bd7c2b5 100644
               + " speech=" + std::to_string(town.speech.npc >= 0 ? int(town.speech.lines.size()) : 0)
               + " voice=" + std::to_string(audio.voice_sound())
 diff --git a/apps/d2d/frontend.cpp b/apps/d2d/frontend.cpp
-index 988f6d9..c1810dd 100644
+index 988f6d9..1ccb479 100644
 --- a/apps/d2d/frontend.cpp
 +++ b/apps/d2d/frontend.cpp
 @@ -3,6 +3,7 @@
@@ -1080,10 +1080,41 @@ index 988f6d9..c1810dd 100644
                                 kTextGreen[0], kTextGreen[1], kTextGreen[2]);
          }
      }
-@@ -263,6 +278,16 @@ void render_charselect(std::vector<std::uint8_t>& framebuffer,
+@@ -234,6 +249,8 @@ void render_charselect(std::vector<std::uint8_t>& framebuffer,
+             if (!text || !*text) continue;
+             const int label_x = button.x + (button.width - scene.font.measure(text)) / 2;
+             if (disabled) scene.font.draw_tinted(framebuffer, kScreenWidth, kScreenHeight, pal, label_x, label_y, text, 96, 96, 96);
++            else if (&button == &select_ui.delete_btn && button.hovered)
++                scene.font.draw_tinted(framebuffer, kScreenWidth, kScreenHeight, pal, label_x, label_y, text, 255, 208, 80);
+             else          scene.font.draw(framebuffer, kScreenWidth, kScreenHeight, pal, label_x, label_y, text);
+             label_y += line_height;
+         }
+@@ -244,7 +261,7 @@ void render_charselect(std::vector<std::uint8_t>& framebuffer,
+     const bool classic_pick = select_ui.selected >= 0 && select_ui.selected < int(scene.saves.size())
+                            && !scene.saves[std::size_t(select_ui.selected)].expansion();
+     draw_tall(select_ui.convert_btn, !classic_pick);
+-    draw_tall(select_ui.delete_btn);
++    draw_tall(select_ui.delete_btn, select_ui.delete_btn.disabled);
+ 
+     for (const Button* button : {&select_ui.cancel_btn, &select_ui.ok_btn}) {
+         if (!button->chrome) continue;
+@@ -263,6 +280,29 @@ void render_charselect(std::vector<std::uint8_t>& framebuffer,
                  scene.font.draw(framebuffer, kScreenWidth, kScreenHeight, pal, label_x, label_y, button->label);
          }
      }
++    if (select_ui.delete_open) {
++        blit_dc6_grid(framebuffer, scene.popup_ok, pal, 268, rec_top(350, 176), 2);
++        draw_text_box(framebuffer, scene, roster_font, "Delete " + scene.saves[std::size_t(select_ui.selected)].name + "?", 268, 285, 264, 66);
++        for (const auto* button : {&select_ui.delete_confirm, &select_ui.delete_cancel}) {
++            blit_button_chrome(framebuffer, pal, *button->chrome, button->x, button->y, button->hovered && button->pressed);
++            const auto shade = std::uint8_t(button->hovered ? 208 : 255);
++            const int x = button->x + (button->width - roster_font.measure(button->label)) / 2;
++            const int y = button->y + (button->height - roster_font.line_height()) / 2;
++            roster_font.draw_tinted(framebuffer, kScreenWidth, kScreenHeight, pal, x, y, button->label, 255, shade,
++                                    button->hovered ? 80 : 255);
++        }
++        return;
++    }
 +    if(select_ui.difficulty_open){
 +        // Sharp angular frame and readable text, independent of world scaling.
 +        for(int y=190;y<410;++y)for(int x=250;x<550;++x){auto* pixel=framebuffer.data()+(std::size_t(y)*kScreenWidth+x)*4;const bool edge=x<252||x>=548||y<192||y>=408;pixel[0]=edge?160:8;pixel[1]=edge?140:8;pixel[2]=edge?85:8;pixel[3]=255;}
@@ -1097,7 +1128,7 @@ index 988f6d9..c1810dd 100644
      if (select_ui.popup.empty()) return;
      // FUN_00433380 on a Sky screen: PopUpOK (record 0xde), the message
      // (0xe0, Font24) and OK (0xe1).
-@@ -325,7 +350,7 @@ void advance_char_states(CharCreateUI& create_ui,
+@@ -325,7 +365,7 @@ void advance_char_states(CharCreateUI& create_ui,
      for (std::size_t i = 0; i < 7; ++i) {
          auto& class_ui = create_ui.classes[i];
          if (class_ui.state == ClassState::Selecting) {
@@ -1106,7 +1137,7 @@ index 988f6d9..c1810dd 100644
              const auto frames = forward.frames_per_direction();
              const auto elapsed = elapsed_ms - class_ui.state_start_ms;
              if (frames == 0 || elapsed / kBaseFrameMs >= frames) {
-@@ -333,7 +358,7 @@ void advance_char_states(CharCreateUI& create_ui,
+@@ -333,7 +373,7 @@ void advance_char_states(CharCreateUI& create_ui,
                  class_ui.state_start_ms = elapsed_ms;
              }
          } else if (class_ui.state == ClassState::Deselecting) {
@@ -1115,7 +1146,7 @@ index 988f6d9..c1810dd 100644
              const auto frames = backward.frames_per_direction();
              const auto elapsed = elapsed_ms - class_ui.state_start_ms;
              if (frames == 0 || elapsed / kBaseFrameMs >= frames) {
-@@ -344,6 +369,22 @@ void advance_char_states(CharCreateUI& create_ui,
+@@ -344,6 +384,22 @@ void advance_char_states(CharCreateUI& create_ui,
      }
  }
  
@@ -1138,7 +1169,7 @@ index 988f6d9..c1810dd 100644
  void handle_charcreate_click(CharCreateUI& create_ui,
                               const Scene& scene,
                               const Mouse& mouse,
-@@ -370,13 +411,8 @@ void handle_charcreate_click(CharCreateUI& create_ui,
+@@ -370,13 +426,8 @@ void handle_charcreate_click(CharCreateUI& create_ui,
      // A class is hit inside its current animation's first frame, drawn at
      // the record's (x, y) (FUN_005003a0); the record's w x h isn't used.
      for (int i = 0; i < 7; ++i) {
@@ -1154,7 +1185,7 @@ index 988f6d9..c1810dd 100644
              if (create_ui.selected == i) return;   // clicked selected class → no-op
              // Deselect old.
              if (create_ui.selected >= 0) {
-@@ -398,6 +434,7 @@ void render_charcreate(std::vector<std::uint8_t>& framebuffer,
+@@ -398,6 +449,7 @@ void render_charcreate(std::vector<std::uint8_t>& framebuffer,
                         const Scene& scene,
                         const CharCreateUI& create_ui,
                         std::uint32_t elapsed_ms) {
@@ -1162,7 +1193,7 @@ index 988f6d9..c1810dd 100644
      // fechar palette per FUN_00435580 RE.
      const auto& pal = scene.charselect_pal;
  
-@@ -430,7 +467,7 @@ void render_charcreate(std::vector<std::uint8_t>& framebuffer,
+@@ -430,7 +482,7 @@ void render_charcreate(std::vector<std::uint8_t>& framebuffer,
          case ClassState::Selected:    anim = 3; break;
          case ClassState::Deselecting: anim = 4; one_shot = true; break;
          }
@@ -1171,7 +1202,7 @@ index 988f6d9..c1810dd 100644
          const auto frames = spr.frames_per_direction();
          if (frames == 0) continue;
          std::uint32_t frame_index;
-@@ -754,19 +791,18 @@ TitleUI title_ui(const Scene& scene) {
+@@ -754,19 +806,18 @@ TitleUI title_ui(const Scene& scene) {
          bool do_switch = false;
          Screen goto_screen = Screen::Title;
          bool quit = false;
@@ -1196,7 +1227,7 @@ index 988f6d9..c1810dd 100644
          {264, 568, 272, 35, 0x13f5, "EXIT DIABLO II",    &scene.btn_wide,
              false, Screen::Title, true},
      };
-@@ -785,6 +821,7 @@ TitleUI title_ui(const Scene& scene) {
+@@ -785,6 +836,7 @@ TitleUI title_ui(const Scene& scene) {
              title.labels.back().c_str(),
              spec.chrome, spec.goto_screen, spec.do_switch, spec.quit, false, false,
          });
@@ -1205,19 +1236,31 @@ index 988f6d9..c1810dd 100644
      return title;
  }
 diff --git a/apps/d2d/frontend.hpp b/apps/d2d/frontend.hpp
-index 9a9cfe9..46fa061 100644
+index 9a9cfe9..fd8d23e 100644
 --- a/apps/d2d/frontend.hpp
 +++ b/apps/d2d/frontend.hpp
-@@ -46,6 +46,8 @@ struct CharSelectUI {
+@@ -29,7 +29,7 @@ void render_title(std::vector<std::uint8_t>& framebuffer,
+ // authored for the fechar palette — on this Sky screen it speckles.
+ //
+ // Slots list <user dir>/save/*.d2s; OK enters InGame once one is picked.
+-// CREATE hops to CharCreate. DELETE is a no-op for now.
++// CREATE hops to CharCreate. DELETE opens a confirmation dialog.
+ struct CharSelectUI {
+     Button create_btn{};
+     Button convert_btn{};
+@@ -45,7 +45,11 @@ struct CharSelectUI {
+     // when none is up. OK goes to popup_return.
      std::string popup;
      Button popup_ok{};
++    Button delete_confirm{}, delete_cancel{};
++    bool delete_open = false;
      Screen popup_return = Screen::CharSelect;
 +    bool difficulty_open=false,difficulty_confirmed=false;
 +    int difficulty_choice=0;
      int selected = -1;           // index into Scene::saves, or -1
      int scroll = 0;              // index of the save in slot 0; always even
      std::uint32_t last_click_ms = 0;   // double-click = OK (FUN_0043a9d0)
-@@ -101,6 +103,9 @@ constexpr int kHardcoreY = rec_top(560, kHardcoreH);
+@@ -101,6 +105,9 @@ constexpr int kHardcoreY = rec_top(560, kHardcoreH);
  // bit 0x20) and its label's hitbox 0xD3 (339, 561, 200 x 32, string 0x58cb).
  constexpr int kExpansionY = rec_top(540, kHardcoreH);
  
@@ -1857,7 +1900,7 @@ index 762c82e..0c95275 100644
  
  }  // namespace d2d::client
 diff --git a/apps/d2d/items.cpp b/apps/d2d/items.cpp
-index 0e69126..68fb689 100644
+index 0e69126..453385b 100644
 --- a/apps/d2d/items.cpp
 +++ b/apps/d2d/items.cpp
 @@ -3,6 +3,7 @@
@@ -1872,23 +1915,24 @@ index 0e69126..68fb689 100644
  #include <vector>
  
  namespace d2d::client {
-+namespace {struct DeferredHover {bool enabled=false;std::vector<TextLine> lines;int left=0,right=0,top=0,bottom=0;};thread_local DeferredHover pending_hover;}
++namespace {struct DeferredHover {bool enabled=false;std::vector<TextLine> lines;int left=0,right=0,top=0,bottom=0,text_scale=0;};thread_local DeferredHover pending_hover;}
 +void begin_hover_frame(bool defer){pending_hover.enabled=defer;pending_hover.lines.clear();}
 +void draw_pending_hover_text(std::vector<std::uint8_t>& f,const Scene& scene){
 + auto& p=pending_hover;p.enabled=false;if(p.lines.empty())return;
 + const bool right=(p.left+p.right)/2>=400;const int sx=right?400:80,dx=right?400:0;
-+ draw_hover_text(f,scene,p.lines,dx+(p.left-sx)*5/4,dx+(p.right-sx)*5/4,(p.top-60)*5/4,(p.bottom-60)*5/4);p.lines.clear();
++ draw_hover_text(f,scene,p.lines,dx+(p.left-sx)*5/4,dx+(p.right-sx)*5/4,(p.top-60)*5/4,(p.bottom-60)*5/4,p.text_scale);p.lines.clear();
 +}
 +
  
  void draw_hover_text(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const std::vector<TextLine>& lines,
-                      int left, int right, int top, int bottom) {
+-                     int left, int right, int top, int bottom) {
++                     int left, int right, int top, int bottom, int text_scale) {
      if (lines.empty()) return;
-+    if(pending_hover.enabled){auto& p=pending_hover;p.lines=lines;p.left=left;p.right=right;p.top=top;p.bottom=bottom;return;}
++    if(pending_hover.enabled){auto& p=pending_hover;p.lines=lines;p.left=left;p.right=right;p.top=top;p.bottom=bottom;p.text_scale=text_scale;return;}
      const auto& pal = scene.act_pal.entries().empty() ? scene.pal : scene.act_pal;
 -    const int line_height = 16;                                   // font16 cell height
 +    const auto& font=scene.readable(scene.font);
-+    int effective=scene.game_text_scale();
++    int effective=text_scale > 0 ? text_scale : scene.game_text_scale();
 +    for(const auto& line:lines){auto fit=d2mini::fit_text(font,line.text,760,560/int(lines.size()),effective,75,false);effective=std::min(effective,fit.scale);}
 +    const d2d::font::TextScaleScope scope(effective);
 +    const int line_height = font.line_height()+3;                                   // font16 cell height
@@ -1920,10 +1964,10 @@ index 0e69126..68fb689 100644
          y += line_height;
      }
 diff --git a/apps/d2d/items.hpp b/apps/d2d/items.hpp
-index a4e7189..866029b 100644
+index a4e7189..9b34aa6 100644
 --- a/apps/d2d/items.hpp
 +++ b/apps/d2d/items.hpp
-@@ -10,6 +10,9 @@
+@@ -10,9 +10,12 @@
  
  namespace d2d::client {
  
@@ -1933,8 +1977,12 @@ index a4e7189..866029b 100644
  // Hover text box: lines centred over [x0, x1], bottom on `bottom` (below
  // `top` instead when it would leave the screen), on a darkened backdrop.
  void draw_hover_text(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const std::vector<TextLine>& lines,
+-                     int left, int right, int top, int bottom);
++                     int left, int right, int top, int bottom, int text_scale = 0);
+ 
+ }  // namespace d2d::client
 diff --git a/apps/d2d/load.cpp b/apps/d2d/load.cpp
-index 1a4888c..7fb92f9 100644
+index 1a4888c..e04d6a7 100644
 --- a/apps/d2d/load.cpp
 +++ b/apps/d2d/load.cpp
 @@ -1,6 +1,10 @@
@@ -2113,7 +2161,7 @@ index 1a4888c..7fb92f9 100644
      sprite(R"(data\global\ui\menu\questbackground.dc6)", scene.quest_bg);
      sprite(R"(data\global\ui\menu\expquesttabs.dc6)", scene.quest_tabs);
      sprite(R"(data\global\ui\menu\questtabs.dc6)", scene.quest_tabs_classic);
-@@ -260,29 +267,18 @@ void load_ui_sprites(Scene& scene, const d2d::mpq::Stack& mpqs) {
+@@ -260,35 +267,24 @@ void load_ui_sprites(Scene& scene, const d2d::mpq::Stack& mpqs) {
      sprite(R"(data\global\ui\menu\questlast.dc6)", scene.quest_last);
      sprite(R"(data\global\ui\menu\questdone.dc6)", scene.quest_done);
      for (std::size_t i = 0; i < scene.quest_icons.size(); ++i)    // the names at 0x6da2c8: a1q1..a1q6, a2q1.., a4q1..3, a5q1..
@@ -2152,7 +2200,34 @@ index 1a4888c..7fb92f9 100644
  }
  
  }  // namespace
-@@ -340,6 +336,15 @@ std::optional<Scene> load_scene(const fs::path& data_dir, const fs::path& patch_
+ 
+ void load_saves(Scene& scene, const fs::path& dir) {
+-    struct Entry { d2d::d2s::Header header; std::vector<d2d::d2s::Item> items; d2d::d2s::Stats stats; std::vector<d2d::d2s::Item> corpse, merc; };
++    struct Entry { d2d::d2s::Header header; fs::path path; std::vector<d2d::d2s::Item> items; d2d::d2s::Stats stats; std::vector<d2d::d2s::Item> corpse, merc; };
+     std::vector<Entry> out;
+     std::error_code error;
+     for (const auto& entry : fs::directory_iterator(dir, error)) {
+@@ -297,7 +293,7 @@ void load_saves(Scene& scene, const fs::path& dir) {
+         std::vector<char> raw{std::istreambuf_iterator<char>(file), {}};
+         const auto bytes = std::as_bytes(std::span(raw));
+         try {
+-            Entry save_entry{ d2d::d2s::parse_header(bytes), {}, {} };
++            Entry save_entry{ d2d::d2s::parse_header(bytes), entry.path(), {}, {} };
+             if (scene.item_tables) {
+                 try {
+                     save_entry.stats = d2d::d2s::parse_stats(bytes, *scene.item_tables);
+@@ -323,8 +319,10 @@ void load_saves(Scene& scene, const fs::path& dir) {
+              < std::tie(first.header.last_played, second.header.name);
+     });
+     scene.saves.clear(); scene.save_items.clear(); scene.save_stats.clear(); scene.save_corpses.clear(); scene.save_mercs.clear();
++    scene.save_paths.clear();
+     for (auto& entry : out) {
+         scene.saves.push_back(std::move(entry.header));
++        scene.save_paths.push_back(std::move(entry.path));
+         scene.save_items.push_back(std::move(entry.items));
+         scene.save_corpses.push_back(std::move(entry.corpse));
+         scene.save_mercs.push_back(std::move(entry.merc));
+@@ -340,6 +338,15 @@ std::optional<Scene> load_scene(const fs::path& data_dir, const fs::path& patch_
      try {
          Scene scene{ std::move(*data) };
          const auto& mpqs = scene.mpqs;
@@ -2168,7 +2243,7 @@ index 1a4888c..7fb92f9 100644
          // Prefer the LoD title asset (fenced rogue camp at night). Classic
          // TitleScreen is only 4×3 sub-frames; LoD is the same layout.
          auto title = mpqs.try_read(R"(data\global\ui\FrontEnd\gameselectscreenEXP.dc6)");
-@@ -360,80 +365,54 @@ std::optional<Scene> load_scene(const fs::path& data_dir, const fs::path& patch_
+@@ -360,80 +367,54 @@ std::optional<Scene> load_scene(const fs::path& data_dir, const fs::path& patch_
                                  R"(data\global\palette\Sky\Pal.PL2)"));
          scene.fechar_pl2 = d2d::palette::Pl2(mpqs.read(
                                  R"(data\global\palette\fechar\Pal.PL2)"));
@@ -2289,7 +2364,7 @@ index 1a4888c..7fb92f9 100644
          scene.credits = [&] {
                  auto bytes = mpqs.try_read(R"(data\local\UI\ENG\ExpansionCredits.txt)");
                  if (!bytes) bytes = mpqs.try_read(R"(data\local\ui\eng\Credits.txt)");
-@@ -443,7 +422,7 @@ std::optional<Scene> load_scene(const fs::path& data_dir, const fs::path& patch_
+@@ -443,7 +424,7 @@ std::optional<Scene> load_scene(const fs::path& data_dir, const fs::path& patch_
          // nuke the whole scene; the InGame screen falls back to the credits
          // placeholder when world is empty.
          if (auto bytes = mpqs.try_read(R"(data\global\ui\FrontEnd\CinematicsSelectionEXP.dc6)"))
@@ -2298,7 +2373,7 @@ index 1a4888c..7fb92f9 100644
          d2d::log::info("Menus loaded in {} ms.", d2d::log::ms() - start_ms);
          return scene;
      } catch (const std::exception& error) {
-@@ -456,7 +435,8 @@ void finish_scene(Scene& scene, const fs::path& save_dir, std::uint32_t map_seed
+@@ -456,7 +437,8 @@ void finish_scene(Scene& scene, const fs::path& save_dir, std::uint32_t map_seed
                    std::uint32_t (*save_seed)(const d2d::d2s::Header&)) {
      const auto start_ms = d2d::log::ms();
      try {
@@ -2308,7 +2383,7 @@ index 1a4888c..7fb92f9 100644
          game::load_game_tables(scene, mpqs);
          load_saves(scene, save_dir);            // their items need the tables
          // The newest save is the likely pick: its map, and the act it was left in.
-@@ -470,13 +450,24 @@ void finish_scene(Scene& scene, const fs::path& save_dir, std::uint32_t map_seed
+@@ -470,13 +452,24 @@ void finish_scene(Scene& scene, const fs::path& save_dir, std::uint32_t map_seed
          // it here instead would hide that wait.
          if (act != 0) d2d::log::info("  Newest save is in act {}; its town builds as the game starts", act + 1);
          game::load_game_world(scene, mpqs, map_seed);
@@ -2334,7 +2409,7 @@ index 1a4888c..7fb92f9 100644
  }
  
 diff --git a/apps/d2d/main.cpp b/apps/d2d/main.cpp
-index 7906cf1..2b6ec84 100644
+index 7906cf1..59cfcf0 100644
 --- a/apps/d2d/main.cpp
 +++ b/apps/d2d/main.cpp
 @@ -1,3 +1,4 @@
@@ -2543,7 +2618,16 @@ index 7906cf1..2b6ec84 100644
      if (scene) {
          auto tbl_label = [&](std::uint16_t id, const char* fallback) {
              if (auto found = lookup_string(*scene, id)) return u16_to_latin1(*found);
-@@ -626,13 +706,24 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -616,6 +696,8 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+                                  &scene->medium_button,
+                                  Screen::InGame, /*do_switch=*/false };
+         csu.popup_ok   = Button{ 351, rec_top(337, 32), 96, 32, nullptr, &scene->cancel_button };
++        csu.delete_confirm = Button{ 292, 305, 96, 32, csu.delete_label.c_str(), &scene->cancel_button };
++        csu.delete_cancel = Button{ 412, 305, 96, 32, "Cancel", &scene->cancel_button };
+     }
+ 
+     const auto start_ticks = SDL_GetTicks();
+@@ -626,13 +708,24 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
      // IMKCFRunLoopWakeUpReliable"). It was left on permanently as a
      // beachball suspect; that beachball was the pan-left float loop.
      bool text_active = false;
@@ -2569,7 +2653,7 @@ index 7906cf1..2b6ec84 100644
      // A joined game: the host keeps the character and sends its save back
      // (B3) now and then and on leaving; each whole one goes to disk
      // (FUN_0045c520 writes <save dir><name>.d2s).
-@@ -649,14 +740,26 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -649,14 +742,26 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
          // --start-screen ingame: a new character of the class and name given,
          // made as char-create's OK makes one (unsaved until the game saves).
          character.character_class = kUiToSaveClass[std::size_t(std::max(character.selected, 0))];
@@ -2597,7 +2681,7 @@ index 7906cf1..2b6ec84 100644
      }
      std::array<bool, 8> frontend_played{};   // title-screen ambience picks
      std::uint32_t last_ms = 0;
-@@ -668,7 +771,8 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -668,7 +773,8 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
      std::atomic<std::uint32_t> current_phase{std::uint32_t(MainPhase::Idle)};
      g_current_phase_ptr = &current_phase;
      std::atomic<bool> watchdog_stop{false};
@@ -2607,7 +2691,7 @@ index 7906cf1..2b6ec84 100644
          std::uint32_t last_reported = 0;
          while (!watchdog_stop.load(std::memory_order_relaxed)) {
              std::this_thread::sleep_for(std::chrono::milliseconds(250));
-@@ -684,10 +788,32 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -684,10 +790,32 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
          }
      });
  
@@ -2640,7 +2724,7 @@ index 7906cf1..2b6ec84 100644
          // Signal-driven quit — Ctrl-C / SIGTERM. The atomic write from
          // d2d_sigint_handler is polled here; SDL_EVENT_QUIT and window
          // close still work through handle_sdl_events.
-@@ -695,7 +821,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -695,7 +823,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
          const std::uint32_t frame_start_ms = std::uint32_t(SDL_GetTicks());
          // Toggled inside the `input` timing window, so any IME cost of the
          // switch itself shows up there.
@@ -2649,7 +2733,7 @@ index 7906cf1..2b6ec84 100644
                             || (screen == Screen::TcpIp && tcpip.box_open); want != text_active) {
              if (want) SDL_StartTextInput(win.window);
              else      SDL_StopTextInput(win.window);
-@@ -703,27 +829,56 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -703,27 +831,56 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
          }
          heartbeat_ms.store(frame_start_ms, std::memory_order_relaxed);
  
@@ -2708,7 +2792,7 @@ index 7906cf1..2b6ec84 100644
              if (event.type == SDL_EVENT_MOUSE_MOTION || event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) { pad_in_use = false; mouse_took_over = true; }
              handle_sdl_events(event, mouse, screen, text_this_frame,
                                backspace_this_frame, keys_this_frame, quit);
-@@ -731,43 +886,109 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -731,43 +888,113 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
          {
              // The pad plays as a cursor, clicks and keys through the same paths as the mouse and keyboard.
              const std::uint32_t pad_now = std::uint32_t(SDL_GetTicks());
@@ -2796,9 +2880,13 @@ index 7906cf1..2b6ec84 100644
 +                const auto add_button = [&](const Button& button) { if(!button.disabled)points.push_back({button.x + button.width/2, button.y + button.height/2}); };
 +                if (screen == Screen::Title) for (const auto& button : title.buttons) add_button(button);
 +                if (screen == Screen::OtherMultiplayer) for (const auto& button : other_multiplayer.buttons) add_button(button);
-+                if(screen==Screen::CharSelect&&csu.difficulty_open){for(int i=0;i<=d2d::d2s::unlocked_difficulty(scene->saves[std::size_t(csu.selected)]);++i)points.push_back({400,260+i*45});}
++                if (screen == Screen::CharSelect && csu.delete_open) {
++                    add_button(csu.delete_cancel); add_button(csu.delete_confirm);
++                } else if (screen == Screen::CharSelect && !csu.popup.empty()) add_button(csu.popup_ok);
++                else if(screen==Screen::CharSelect&&csu.difficulty_open){for(int i=0;i<=d2d::d2s::unlocked_difficulty(scene->saves[std::size_t(csu.selected)]);++i)points.push_back({400,260+i*45});}
 +                else if (screen == Screen::CharSelect) {
 +                    add_button(csu.create_btn); add_button(csu.cancel_btn); add_button(csu.ok_btn);
++                    if (!g_no_save && csu.selected >= 0 && csu.selected < int(scene->saves.size())) add_button(csu.delete_btn);
 +                    for (int i=0; i<std::min(8, int(scene->saves.size())-csu.scroll); ++i) points.push_back({i%2 ? 550 : 240, 145 + i/2*95});
 +                    if(charselect_max_scroll(int(scene->saves.size()))>0){
 +                        points.push_back({kScrollX+6,kScrollUpTop+kScrollArrow/2});
@@ -2828,7 +2916,7 @@ index 7906cf1..2b6ec84 100644
              if (pad_actions.rclick_press && !pad_field)  mouse.rpress_this_frame = true;
              for (const pad::Key pad_key : pad_actions.keys) {
                  // Escape quits from the title screen; B must not be able to close the app there.
-@@ -780,9 +1001,11 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -780,9 +1007,11 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
              }
              town.pad_move = screen == Screen::InGame
                  ? Town::PadMove{ pad_actions.move_x, pad_actions.move_y, pad_actions.move_active,
@@ -2841,7 +2929,7 @@ index 7906cf1..2b6ec84 100644
          current_phase.store(std::uint32_t(MainPhase::Devctl),
                              std::memory_order_relaxed);
          if (channel.active()) channel.pump();
-@@ -804,6 +1027,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -804,6 +1033,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
              }
          }
          const std::uint32_t t_after_input = std::uint32_t(SDL_GetTicks());
@@ -2849,7 +2937,7 @@ index 7906cf1..2b6ec84 100644
          current_phase.store(std::uint32_t(MainPhase::Render),
                              std::memory_order_relaxed);
          const auto now_ms = std::uint32_t(SDL_GetTicks() - start_ticks);
-@@ -815,7 +1039,12 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -815,7 +1045,12 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
              audio.stop(audio.voice);
          }
          if (screen == Screen::InGame && audio.music.sound < 0) audio.stop(audio.music);
@@ -2862,7 +2950,7 @@ index 7906cf1..2b6ec84 100644
          const Screen prev_screen = last_screen;          // the screen as of the last frame
          last_screen = screen;
          // Frontend music (FUN_00516250's music thread + FUN_00514990): on
-@@ -835,8 +1064,10 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -835,8 +1070,10 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
              frontend_played[std::size_t(pick)] = true;
              audio.play_music_path(*scene, kFrontendMusic[pick], -(pick + 1), 1.f, false);
          }
@@ -2874,7 +2962,7 @@ index 7906cf1..2b6ec84 100644
              case Screen::Video: {
                  // Next video when none plays or the viewer skips one.
                  const bool skip = mouse.press_this_frame || !keys_this_frame.empty();
-@@ -907,6 +1138,12 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -907,6 +1144,12 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                  for (auto& button : title.buttons) update_button(button, mouse, screen, quit);
                  if (screen == Screen::CharSelect) g_join_host = g_cli_join;   // SINGLE PLAYER
                  render_title(framebuffer, *scene, title.buttons, now_ms);
@@ -2887,10 +2975,37 @@ index 7906cf1..2b6ec84 100644
                  break;
              case Screen::OtherMultiplayer:
                  for (auto& button : other_multiplayer.buttons) update_button(button, mouse, screen, quit);
-@@ -955,6 +1192,20 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -955,6 +1198,47 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                  render_credits(framebuffer, *scene, now_ms);
                  break;
              case Screen::CharSelect: {
++                if (csu.delete_open) {
++                    const bool confirm_pressed = csu.delete_confirm.pressed;
++                    update_button(csu.delete_confirm, mouse, screen, quit);
++                    update_button(csu.delete_cancel, mouse, screen, quit);
++                    const bool cancel = std::ranges::find(keys_this_frame, SDLK_ESCAPE) != keys_this_frame.end()
++                        || (csu.delete_cancel.hovered && mouse.release_this_frame);
++                    if (cancel) csu.delete_open = false;
++                    else if (confirm_pressed && csu.delete_confirm.hovered && mouse.release_this_frame) {
++                        csu.delete_open = false;
++                        const auto& path = scene->save_paths[std::size_t(csu.selected)];
++                        if (const auto error = characters.archive(path)) {
++                            d2d::log::warn("Could not archive {}: {}", path.string(), error.message());
++                            csu.popup = "Could not delete the character.";
++                            const auto& ok = csu.popup_ok;
++                            mouse.x = ok.x + ok.width / 2;
++                            mouse.y = ok.y + ok.height / 2;
++                        } else {
++                            load_saves(*scene, save_dir);
++                            csu.selected = std::min(csu.selected, int(scene->saves.size()) - 1);
++                            csu.scroll = std::min(csu.scroll, charselect_max_scroll(int(scene->saves.size())));
++                            csu.last_click_ms = 0;
++                        }
++                    }
++                    csu.delete_btn.disabled = g_no_save || csu.selected < 0;
++                    render_charselect(framebuffer, *scene, csu, now_ms);
++                    break;
++                }
 +                bool difficulty_ready=false;
 +                if(csu.difficulty_open){
 +                    const int maximum=d2d::d2s::unlocked_difficulty(scene->saves[std::size_t(csu.selected)]);
@@ -2908,7 +3023,7 @@ index 7906cf1..2b6ec84 100644
                  if (!csu.popup.empty()) {   // a failed join's popup takes the input until OK
                      Screen stay = screen;
                      update_button(csu.popup_ok, mouse, stay, quit);
-@@ -970,7 +1221,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -970,7 +1254,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                  const int count = int(scene->saves.size());
                  const int max_scroll = charselect_max_scroll(count);
                  int rows = -mouse.wheel;   // wheel up = scroll toward the top
@@ -2917,8 +3032,24 @@ index 7906cf1..2b6ec84 100644
                  if (mouse.press_this_frame) {
                      const int slot = charselect_slot_at(mouse.x, mouse.y);
                      if (slot >= 0 && csu.scroll + slot < count) {
-@@ -1016,8 +1267,12 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1011,13 +1295,28 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+                 }
+                 // OK only enters the game with a save picked.
+                 csu.ok_btn.do_switch = csu.selected >= 0;
++                csu.delete_btn.disabled = g_no_save || csu.selected < 0 || csu.selected >= count;
+                 for (Button* button : {&csu.create_btn, &csu.convert_btn, &csu.delete_btn,
+                                   &csu.cancel_btn, &csu.ok_btn})
                      update_button(*button, mouse, screen, quit);
++                if (csu.delete_btn.hovered && mouse.release_this_frame) {
++                    csu.delete_open = true;
++                    csu.delete_cancel.hovered = true;
++                    csu.delete_confirm.hovered = false;
++                    csu.delete_cancel.pressed = csu.delete_confirm.pressed = false;
++                    mouse.x = csu.delete_cancel.x + csu.delete_cancel.width / 2;
++                    mouse.y = csu.delete_cancel.y + csu.delete_cancel.height / 2;
++                    render_charselect(framebuffer, *scene, csu, now_ms);
++                    break;
++                }
                  if (play && csu.selected >= 0 && csu.selected < count) screen = Screen::InGame;
                  if (screen == Screen::InGame) {
 +                    auto header=scene->saves[std::size_t(csu.selected)];
@@ -2931,7 +3062,7 @@ index 7906cf1..2b6ec84 100644
                      character.selected   = kSaveClassToUi[header.cls];
                      character.character_class = header.cls;
                      character.name = header.name;
-@@ -1035,8 +1290,17 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1035,8 +1334,17 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                      character.panel = panel_stats(*scene, header, character.items, character.stats);
                      character.expansion = header.expansion();
                      character.header = header;
@@ -2950,7 +3081,7 @@ index 7906cf1..2b6ec84 100644
                          town.enter();                            // the World takes the character
                      } else {
                          // --join: the host's game, at its map seed. d2d's World saves
-@@ -1081,15 +1345,45 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1081,15 +1389,45 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                          }
                      }
                  }
@@ -2998,7 +3129,7 @@ index 7906cf1..2b6ec84 100644
                  write_save_back();
                  if (town.net_game && town.net_game->closed()) {        // the host's gone: back to the characters, as game.exe's drop
                      d2d::log::warn("net: lost the host; leaving the game");
-@@ -1106,6 +1400,10 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1106,6 +1444,10 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                      town.world.characters = g_no_save ? nullptr : &characters;
                  }
                  if (screen == Screen::CharSelect && scene) {         // left the game (saved): the roster again,
@@ -3009,7 +3140,7 @@ index 7906cf1..2b6ec84 100644
                      load_saves(*scene, save_dir);                      // the character just played first
                      csu.selected = scene->saves.empty() ? -1 : 0;
                      csu.scroll = 0;
-@@ -1121,6 +1419,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1121,6 +1463,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                  break;
              }
              case Screen::CharCreate: {
@@ -3017,7 +3148,7 @@ index 7906cf1..2b6ec84 100644
                  character.appearance.reset();   // a new character wears starting gear
                  character.items.clear();
                  character.stats = {};
-@@ -1143,8 +1442,11 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1143,8 +1486,11 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                  character.ok_btn.do_switch = character.selected >= 0 && d2d::net::valid_join_name(character.name);
                  update_button(character.cancel_btn, mouse, screen, quit);
                  update_button(character.ok_btn,     mouse, screen, quit);
@@ -3031,7 +3162,7 @@ index 7906cf1..2b6ec84 100644
                  // OK: a new character (CharStats.txt's start), saved at once so
                  // it's on the roster. A name that has a save already is refused.
                  if (screen == Screen::InGame && scene) {
-@@ -1161,7 +1463,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1161,7 +1507,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                          character.corpse.clear();
                          character.appearance.reset();
                          character.panel = panel_stats(*scene, character.header, character.items, character.stats);
@@ -3040,7 +3171,7 @@ index 7906cf1..2b6ec84 100644
                          town.enter();
                          town.save();
                          load_saves(*scene, save_dir);
-@@ -1169,9 +1471,24 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1169,9 +1515,24 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                  }
                  advance_char_states(character, *scene, now_ms);
                  render_charcreate(framebuffer, *scene, character, now_ms);
@@ -3065,7 +3196,7 @@ index 7906cf1..2b6ec84 100644
              // D2's own cursor, drawn into the frame so it scales with the
              // game (the OS pointer is hidden). DC6 frames anchor bottom-
              // left, which puts the fingertip on the hotspot. Palette of
-@@ -1179,28 +1496,51 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1179,28 +1540,51 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
              // ponytail: frame 0 idle, the closed hand (7) while pressed;
              // D2 plays the grab frames in between.
              const int cursor_dx = (fb_width(framebuffer) - int(kScreenWidth)) / 2;
@@ -3124,7 +3255,7 @@ index 7906cf1..2b6ec84 100644
          const std::uint32_t t_after_render = std::uint32_t(SDL_GetTicks());
          // Skip GPU work when the window is minimized — Metal's swapchain
          // stalls if we keep pushing frames to a hidden drawable, which
-@@ -1210,12 +1550,17 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1210,12 +1594,17 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
          if (!(wflags & SDL_WINDOW_MINIMIZED)) {
              current_phase.store(std::uint32_t(MainPhase::Upload),
                                  std::memory_order_relaxed);
@@ -3148,7 +3279,7 @@ index 7906cf1..2b6ec84 100644
              crash_frame.update(framebuffer);
          }
          const std::uint32_t t_after_present = std::uint32_t(SDL_GetTicks());
-@@ -1232,11 +1577,24 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1232,11 +1621,24 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
          const std::uint32_t dt_input   = t_after_input   - frame_start_ms;
          const std::uint32_t dt_render  = t_after_render  - t_after_input;
          const std::uint32_t dt_present = t_after_present - t_after_render;
@@ -3173,7 +3304,7 @@ index 7906cf1..2b6ec84 100644
          ++stat_frames;
          stat_render_sum  += dt_render;
          stat_present_sum += dt_present;
-@@ -1257,6 +1615,19 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1257,6 +1659,19 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                  "alive: {} frames/5s | input max={} | render avg={} max={} | present avg={} max={} | screen={} cam=({},{})",
                  stat_frames, stat_input_max, avg_r, stat_render_max, avg_p, stat_present_max,
                  int(screen), int(town.player.x), int(town.player.y));
@@ -3193,7 +3324,7 @@ index 7906cf1..2b6ec84 100644
              stat_frames = 0;      stat_input_max = 0;
              stat_render_sum = 0;  stat_render_max = 0;
              stat_present_sum = 0; stat_present_max = 0;
-@@ -1264,14 +1635,14 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
+@@ -1264,14 +1679,14 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
          }
          current_phase.store(std::uint32_t(MainPhase::PaceDelay),
                              std::memory_order_relaxed);
@@ -3210,7 +3341,7 @@ index 7906cf1..2b6ec84 100644
      g_current_phase_ptr = nullptr;
      gamepads.close();   // before SDL goes away, not at scope exit
      SDL_Quit();
-@@ -1299,7 +1670,10 @@ extern "C" void d2d_sigint_handler(int) {
+@@ -1299,7 +1714,10 @@ extern "C" void d2d_sigint_handler(int) {
      if (g_sigint_count >= 2) _exit(130);
  }
  
@@ -3222,7 +3353,7 @@ index 7906cf1..2b6ec84 100644
      // Ctrl-C and SIGTERM set the loop-quit flag instead of terminating
      // mid-frame. SIGPIPE gets ignored so a closed devctl client doesn't
      // kill the game.
-@@ -1330,6 +1704,9 @@ int main(int argc, char** argv) {
+@@ -1330,6 +1748,9 @@ int main(int argc, char** argv) {
      std::string devctl_path;
      fs::path    data_dir;
      bool        headless = false;
@@ -3232,7 +3363,7 @@ index 7906cf1..2b6ec84 100644
      bool        send_crash_reports = false;
      bool        enable_crash_test = false;
      std::string start_screen;   // "title" | "credits" | "charcreate" | "ingame"
-@@ -1341,6 +1718,9 @@ int main(int argc, char** argv) {
+@@ -1341,6 +1762,9 @@ int main(int argc, char** argv) {
      std::uint32_t map_seed = std::random_device{}();   // --seed fixes it (3 puts the Blood Moor east, townE1)
  
      CLI::App app{"d2d — Diablo II re-implementation"};
@@ -3242,7 +3373,7 @@ index 7906cf1..2b6ec84 100644
      app.add_option("--seed", map_seed, "Map seed (act 1 layout and the Blood Moor)");
      app.add_option("--devctl", devctl_path,
                     "Unix-socket dev-control channel path");
-@@ -1381,7 +1761,7 @@ int main(int argc, char** argv) {
+@@ -1381,7 +1805,7 @@ int main(int argc, char** argv) {
      // d2d's own changes to game.exe (deviations.md), each on by default:
      // --toggle trans_roof=off,... Names in kToggles.
      std::string toggles;
@@ -3251,7 +3382,7 @@ index 7906cf1..2b6ec84 100644
      app.add_flag  ("--no-video", no_video, "Skip the startup cinematics");
      std::string join_host, game_exe, log_level = "info";
      app.add_option("--log-level", log_level, "error, warning, info, debug or trace");
-@@ -1426,6 +1806,14 @@ int main(int argc, char** argv) {
+@@ -1426,6 +1850,14 @@ int main(int argc, char** argv) {
          data_dir = found.dir;
          d2d::log::info("  Data dir: {} ({})", data_dir.string(), found.from);
      }
@@ -3266,7 +3397,7 @@ index 7906cf1..2b6ec84 100644
      // An explicit patch layer wins over the install's own patch_d2.mpq:
      // $D2_PATCH_INSTALLER (the tests' convention), else `patch =`.
      const char* patch_env = std::getenv("D2_PATCH_INSTALLER");
-@@ -1433,10 +1821,28 @@ int main(int argc, char** argv) {
+@@ -1433,10 +1865,28 @@ int main(int argc, char** argv) {
  
      std::vector<std::uint8_t> framebuffer(std::size_t(kScreenWidth) * kScreenHeight * 4, 0);
      for (std::size_t i = 3; i < framebuffer.size(); i += 4) framebuffer[i] = 0xFF;
@@ -3296,7 +3427,7 @@ index 7906cf1..2b6ec84 100644
  
      std::atomic<std::uint64_t> frame_count{0};
      std::atomic<bool>          quit{false};
-@@ -1464,8 +1870,10 @@ int main(int argc, char** argv) {
+@@ -1464,8 +1914,10 @@ int main(int argc, char** argv) {
          if (args.size() != 2 || args[1] != "CONFIRM_CRASH")
              return std::string("err usage: crash-test CONFIRM_CRASH\n");
          d2d::log::warn("Triggering the explicitly requested Sentry crash test.");
@@ -3307,7 +3438,7 @@ index 7906cf1..2b6ec84 100644
          return std::string("err Sentry crash test unexpectedly returned\n");
      });
      channel.listen(devctl_path);
-@@ -1475,7 +1883,6 @@ int main(int argc, char** argv) {
+@@ -1475,7 +1927,6 @@ int main(int argc, char** argv) {
      {
          static const std::pair<std::string_view, bool*> kToggles[] = {
              { "trans_roof", &g_roof_cutout },   // the see-through circle in roofs round the player
@@ -3315,7 +3446,7 @@ index 7906cf1..2b6ec84 100644
              { "autoparty", &g_autoparty },      // a joined game: invite the others, accept their invites
          };
          std::string_view rest = toggles;
-@@ -1487,7 +1894,7 @@ int main(int argc, char** argv) {
+@@ -1487,7 +1938,7 @@ int main(int argc, char** argv) {
              const auto name = item.substr(0, equals_at), value = equals_at == std::string_view::npos ? std::string_view("on") : item.substr(equals_at + 1);
              const auto toggle = std::ranges::find(kToggles, name, &std::pair<std::string_view, bool*>::first);
              if (toggle == std::end(kToggles) || (value != "on" && value != "off")) {
@@ -3324,7 +3455,7 @@ index 7906cf1..2b6ec84 100644
                  continue;
              }
              *toggle->second = value == "on";
-@@ -1515,7 +1922,11 @@ int main(int argc, char** argv) {
+@@ -1515,7 +1966,11 @@ int main(int argc, char** argv) {
      if (cfg.contains("music_volume")) g_music_volume = std::clamp(std::atoi(cfg["music_volume"].c_str()), 0, 100);
  
      if (headless) {
@@ -3337,7 +3468,7 @@ index 7906cf1..2b6ec84 100644
              d2d::log::info("--headless with no --devctl has nothing to do. exiting.");
              return 0;
          }
-@@ -1528,4 +1939,7 @@ int main(int argc, char** argv) {
+@@ -1528,4 +1983,7 @@ int main(int argc, char** argv) {
          if (!std::getenv("ALSOFT_DRIVERS")) SDL_setenv_unsafe("ALSOFT_DRIVERS", "null", 1);   // openal-soft's silent backend
      }
      return run_windowed(framebuffer, scene, loading, save_dir, channel, frame_count, quit);
@@ -3953,7 +4084,7 @@ index 25255e6..11fa07e 100644
  }
  
 diff --git a/apps/d2d/scene.hpp b/apps/d2d/scene.hpp
-index 4926464..6e47bd0 100644
+index 4926464..b9dcdcd 100644
 --- a/apps/d2d/scene.hpp
 +++ b/apps/d2d/scene.hpp
 @@ -64,6 +64,10 @@ struct Scene : GameData {
@@ -4005,7 +4136,15 @@ index 4926464..6e47bd0 100644
      d2d::font::Font       font;
      d2d::font::Font       font_small;         // font8 — long panel values
      d2d::font::Font       font_tiny;          // font6 — panel labels
-@@ -151,6 +164,8 @@ struct Scene : GameData {
+@@ -110,6 +123,7 @@ struct Scene : GameData {
+     // Character saves from <user dir>/save/*.d2s, most recently played first,
+     // with each save's items (empty if they couldn't be parsed).
+     std::vector<d2d::d2s::Header> saves;
++    std::vector<std::filesystem::path> save_paths;
+     std::vector<std::vector<d2d::d2s::Item>> save_items;
+     std::vector<d2d::d2s::Stats> save_stats;
+     std::vector<std::vector<d2d::d2s::Item>> save_corpses;   // each save's corpse list (its items), empty: none
+@@ -151,6 +165,8 @@ struct Scene : GameData {
      d2d::dc6::Sprite cube_panel;
      d2d::dc6::Sprite transmute_button;                 // PANEL\miniconvert.dc6: the Cube's Transmute, 0 up / 1 held
      d2d::dc6::Sprite inv_panel;                       // PANEL\invchar6.dc6
@@ -4014,7 +4153,7 @@ index 4926464..6e47bd0 100644
      d2d::dc6::Sprite inv_tab;                         // PANEL\invchar6Tab.dc6: weapon switch set II's tabs
      // Char panel stat buttons (docs/research/re/char-panel.md): PANEL\level
      // (frame 1 pressed) on PANEL\levelsocket, the PANEL\skillpoints box.
-@@ -199,7 +214,12 @@ struct Scene : GameData {
+@@ -199,7 +215,12 @@ struct Scene : GameData {
      d2d::dc6::Sprite wp_bg, wp_icons;
      std::array<d2d::dc6::Sprite, 2> wp_tabs;                      // [expansion]: waygatetabs / expwaygatetabs
      d2d::dc6::Sprite automap_cels;                     // UI\AutoMap\MaxiMap.dc6
@@ -4028,7 +4167,7 @@ index 4926464..6e47bd0 100644
      std::array<d2d::dc6::Sprite, 4> rain_splash;       // UncompOverlays\Rain1..4 (Rain3 / 4 splash where drops fall)
      d2d::dcc::Sprite npc_alert;                        // Overlay.txt npcalert: NPCSpeechBalloon.dcc
      mutable std::unordered_map<const OverlayInfo*, d2d::dcc::Sprite> overlay_sprites;   // loaded when first drawn
-@@ -209,6 +229,16 @@ struct Scene : GameData {
+@@ -209,6 +230,16 @@ struct Scene : GameData {
      std::vector<std::uint8_t> rand_transforms;         // Monsters\RandTransforms.dat: 30 x 256
      const std::uint8_t* monster_map(const Npc& npc) const;
      const d2d::dcc::Sprite* overlay_sprite(const OverlayInfo& overlay) const;
@@ -4318,7 +4457,7 @@ index ce4491d..ba4de62 100644
      }
  };
 diff --git a/apps/d2d/skilltree.cpp b/apps/d2d/skilltree.cpp
-index f73a385..5b67b8b 100644
+index f73a385..7f0fd3a 100644
 --- a/apps/d2d/skilltree.cpp
 +++ b/apps/d2d/skilltree.cpp
 @@ -4,6 +4,7 @@
@@ -4338,7 +4477,7 @@ index f73a385..5b67b8b 100644
      const auto& pal = scene.act_pal.entries().empty() ? scene.pal : scene.act_pal;
      auto dc6 = [&](const d2d::dc6::Sprite& spr, int frame, int x, int y, int shade = 256) {
          if (frame < 0 || spr.frames_per_direction() <= std::uint32_t(frame)) return;
-@@ -63,16 +66,29 @@ void draw_skill_tree(std::vector<std::uint8_t>& framebuffer, const Scene& scene,
+@@ -63,16 +66,52 @@ void draw_skill_tree(std::vector<std::uint8_t>& framebuffer, const Scene& scene,
          dc6(background, base + 3, kTreeR - 0x40, kTreeB - 0x30);
      }
      auto centred = [&](const d2d::font::Font& font, int left, int right, int y, const std::string& text) {
@@ -4354,28 +4493,107 @@ index f73a385..5b67b8b 100644
 -                              kTreeTabs[std::size_t(cls)] })
 -        for (const auto& label : list)
 -            if (auto found = lookup_string(scene, label.id)) centred(scene.font, kTreeR - 0x5a, kTreeR, label.y, u16_to_latin1(*found));
-+    const auto block=[&](const std::vector<TreeLabel>& labels,int top,int height){
-+        std::string text;for(const auto& label:labels)if(auto found=lookup_string(scene,label.id)){if(!text.empty())text+=' ';text+=u16_to_latin1(*found);}
-+        const auto& tab_font=scene.readable(scene.font_small.line_height()?scene.font_small:scene.font);
-+        const auto fit=d2mini::fit_text(tab_font,text,74,height,scene.use_readable()?135:150,65,true,false,1);
++    const auto& tab_font = scene.readable(scene.font_small.line_height() ? scene.font_small : scene.font);
++    const int requested_scale = scene.use_readable() ? 135 : 150;
++    const auto layout = [&](std::string_view text, int height, int scale) {
++        return d2mini::fit_text(tab_font, text, 74, height, scale, 65, true, false, 1);
++    };
++    const auto draw_label = [&](const d2mini::TextLayout& fit, int top, int height) {
++        if (fit.lines.empty()) return;
 +        const d2d::font::TextScaleScope scale(fit.scale);
 +        const int first_top=tab_font.ink_bounds(fit.lines.front())[1],last_bottom=tab_font.ink_bounds(fit.lines.back())[3];
 +        const int visible_height=int(fit.lines.size()-1)*fit.line_step+last_bottom-first_top;int y=top+(height-visible_height)/2-first_top;
 +        for(const auto& line:fit.lines){tab_font.draw(framebuffer,kScreenWidth,kScreenHeight,pal,kTreeR-89+(80-tab_font.ink_width(line))/2,y,line);y+=fit.line_step;}
 +    };
-+    block(std::vector<TreeLabel>(std::begin(kTreeHeader),std::end(kTreeHeader)),66,56);
-+    std::vector<TreeLabel> group;int last=0;
-+    for(const auto& label:kTreeTabs[std::size_t(cls)]){
-+        if(!group.empty()&&label.y-last>40){block(group,(group.front().y+last)/2-42,84);group.clear();}
-+        group.push_back(label);last=label.y;
++    const auto append_label = [&](std::string& text, const TreeLabel& label) {
++        if (const auto found = lookup_string(scene, label.id)) {
++            if (!text.empty()) text += ' ';
++            text += u16_to_latin1(*found);
++        }
++    };
++    std::string heading;
++    for (const auto& label : kTreeHeader) append_label(heading, label);
++    draw_label(layout(heading, 56, requested_scale), 66, 56);
++
++    struct TabLabel { std::string text; int first_y; int last_y; };
++    std::vector<TabLabel> tabs;
++    for (const auto& label : kTreeTabs[std::size_t(cls)]) {
++        if (tabs.empty() || label.y - tabs.back().last_y > 40)
++            tabs.push_back({{}, label.y, label.y});
++        append_label(tabs.back().text, label);
++        tabs.back().last_y = label.y;
 +    }
-+    if(!group.empty())block(group,(group.front().y+last)/2-42,84);
++    constexpr int tab_height = 84;
++    int tab_scale = requested_scale;
++    for (const auto& label : tabs)
++        tab_scale = std::min(tab_scale, layout(label.text, tab_height, requested_scale).scale);
++    for (const auto& label : tabs) {
++        const auto fit = d2mini::fit_text(tab_font, label.text, 74, tab_height,
++                                          tab_scale, tab_scale, true, false, 1);
++        draw_label(fit, (label.first_y + label.last_y - tab_height) / 2, tab_height);
++    }
      const auto pts = stats.get(d2d::d2s::kSkillPts);
 -    centred(scene.font, kTreeR - 0x41, kTreeR - 0x19, 140, std::to_string(pts));
 +    centred(scene.readable(scene.font), kTreeR - 0x41, kTreeR - 0x19, 140, std::to_string(pts));
      const auto& list = scene.rules.class_skills[std::size_t(cls)];
      const int clvl = int(stats.get(d2d::d2s::kLevel));
      int hover = -1;
+@@ -89,11 +128,37 @@ void draw_skill_tree(std::vector<std::uint8_t>& framebuffer, const Scene& scene,
+         }
+         if (mouse_x > icon_x && mouse_x < icon_x + 0x30 && mouse_y > icon_y - 0x30 && mouse_y < icon_y) hover = int(i);
+     }
+-    if (hover >= 0 && !list[std::size_t(hover)].name.empty()) {
+-        const auto [icon_x, icon_y] = skill_icon_at(list[std::size_t(hover)]);
+-        if (auto found = lookup_string(scene, list[std::size_t(hover)].name))
+-            draw_hover_text(framebuffer, scene, { { u16_to_latin1(*found), kTxtWhite } }, icon_x, icon_x + 0x30, icon_y, icon_y - 0x30);
++    if (hover < 0) return;
++    const auto& skill = list[std::size_t(hover)];
++    if (skill.name.empty()) return;
++    const auto name = lookup_string(scene, skill.name);
++    if (!name) return;
++
++    std::vector<TextLine> lines{{u16_to_latin1(*name), {255, 208, 80}}};
++    const auto& font = scene.readable(scene.font);
++    int text_scale = std::min(scene.game_text_scale(), 130);
++    for (const auto* key : {&skill.description, &skill.short_description}) {
++        if (key->empty()) continue;
++        const auto text = lookup_string(scene, *key);
++        if (!text || text->empty()) continue;
++        auto description = u16_to_latin1(*text);
++        std::erase(description, '\r');
++        // The string tables store the description's lines in bottom-up order.
++        std::string ordered;
++        std::string_view remainder = description;
++        for (auto split = remainder.rfind('\n'); split != remainder.npos; split = remainder.rfind('\n')) {
++            ordered.append(remainder.substr(split + 1));
++            ordered += '\n';
++            remainder = remainder.substr(0, split);
++        }
++        ordered.append(remainder);
++        const auto layout = d2mini::fit_text(font, ordered, 400, 385, text_scale, 75);
++        text_scale = layout.scale;
++        for (const auto& line : layout.lines) lines.push_back({line, kTxtWhite});
++        break;
+     }
++    const auto [icon_x, icon_y] = skill_icon_at(skill);
++    draw_hover_text(framebuffer, scene, lines, icon_x, icon_x + 0x30, icon_y, icon_y - 0x30, text_scale);
+ }
+ 
+ }  // namespace d2d::client
+diff --git a/apps/d2d/skilltree.hpp b/apps/d2d/skilltree.hpp
+index 3bf7917..b230d81 100644
+--- a/apps/d2d/skilltree.hpp
++++ b/apps/d2d/skilltree.hpp
+@@ -50,8 +50,7 @@ const std::vector<TreeLabel> kTreeTabs[7] = {
+ // at baseline 140), and each skill of the tab: icon frame IconCel (+1
+ // while pressed), greyed when it can't take a point (draw colour 5), its
+ // level at (x + 48, bottom + 12) when learned (4 left for two digits).
+-// ponytail: grey is a 50% darken; no hover brightening or skill
+-// description popup, just the name; the game draws 10+ in FontFormal10.
++// Grey is a 50% darken; hover shows the name and localized description.
+ void draw_skill_tree(std::vector<std::uint8_t>& framebuffer, const Scene& scene, int cls, int tab,
+                      const std::array<std::uint8_t, 30>& levels, const d2d::d2s::Stats& stats, int pressed, int mouse_x, int mouse_y);
+ 
 diff --git a/apps/d2d/store.cpp b/apps/d2d/store.cpp
 index 20e41b6..4322d1a 100644
 --- a/apps/d2d/store.cpp
@@ -8621,11 +8839,48 @@ index 9f280f2..761d8ed 100644
      }
      return panel;
 diff --git a/components/game/character_store.hpp b/components/game/character_store.hpp
-index 764be6a..cb6d485 100644
+index 764be6a..5500721 100644
 --- a/components/game/character_store.hpp
 +++ b/components/game/character_store.hpp
-@@ -40,7 +40,8 @@ struct CharacterStore {
+@@ -38,9 +38,45 @@ struct CharacterStore {
  
+     [[nodiscard]] std::filesystem::path path(const std::string& name) const { return dir / (name + ".d2s"); }
+ 
++    // Keep deleted characters recoverable outside the live roster.
++    std::error_code archive(const std::filesystem::path& file) const {
++        namespace fs = std::filesystem;
++        if (file.parent_path() != dir || file.extension() != ".d2s")
++            return std::make_error_code(std::errc::invalid_argument);
++        std::error_code error;
++        const auto deleted = dir / "deleted";
++        fs::create_directories(deleted, error);
++        if (error) return error;
++        auto folder = deleted / file.stem();
++        for (int suffix = 1; !fs::create_directory(folder, error); ++suffix) {
++            if (error) return error;
++            folder = deleted / (file.stem().string() + "-" + std::to_string(suffix));
++        }
++        std::vector<fs::path> moved;
++        const auto move = [&](const fs::path& source) {
++            fs::rename(source, folder / source.filename(), error);
++            if (!error) moved.push_back(source);
++        };
++        for (const auto* extension : {".skills", ".qa", ".map", ".ma0", ".ma1", ".ma2", ".ma3", ".d2s.bak"}) {
++            auto companion = file;
++            companion.replace_extension(extension);
++            if (fs::exists(companion, error)) move(companion);
++            if (error) break;
++        }
++        if (!error) move(file);
++        if (error) {
++            std::error_code rollback_error;
++            for (auto it = moved.rbegin(); it != moved.rend(); ++it)
++                fs::rename(folder / it->filename(), *it, rollback_error);
++            fs::remove(folder, rollback_error);
++        }
++        return error;
++    }
++
      // Writes the character; "" when it's done, else why not (nothing written).
      std::string save(const d2d::d2s::Header& header, const d2d::d2s::Stats& stats, const std::vector<d2d::d2s::Item>& items,
 -                     const std::vector<d2d::d2s::Item>* corpse = nullptr) const {
@@ -8634,7 +8889,7 @@ index 764be6a..cb6d485 100644
          namespace fs = std::filesystem;
          if (!tables) return "no item tables";
          if (header.name.empty() || header.name.find_first_of("/\\.") != std::string::npos) return "bad name";
-@@ -49,12 +50,21 @@ struct CharacterStore {
+@@ -49,12 +85,21 @@ struct CharacterStore {
          if (std::ifstream file_in(file, std::ios::binary); file_in) raw.assign(std::istreambuf_iterator<char>(file_in), {});
          std::vector<std::byte> out;
          try {
@@ -13301,7 +13556,7 @@ index d1a0c24..3650a3d 100644
                              const std::vector<d2d::drlg::Outdoor::RoomSeed>& made, const std::vector<d2d::drlg::PlainRoom>& plain,
                              std::vector<std::string>& notes);
 diff --git a/components/game/gamedata_load.cpp b/components/game/gamedata_load.cpp
-index 959440a..87efe10 100644
+index 959440a..861cfda 100644
 --- a/components/game/gamedata_load.cpp
 +++ b/components/game/gamedata_load.cpp
 @@ -33,6 +33,7 @@
@@ -13644,7 +13899,16 @@ index 959440a..87efe10 100644
      // inventory.txt "<Class>2" rows are the 800x600 layouts.
      const auto inv = txt("inventory");
      for (std::size_t row = 0; row < inv.size(); ++row) {
-@@ -1421,7 +1509,10 @@ std::optional<GameData> open_game_data(const fs::path& data_dir, const fs::path&
+@@ -1343,6 +1431,8 @@ void load_tables(GameData& game_data, const d2d::mpq::Stack& mpqs) {
+                     class_skill.col = num(desc.get(found->second, "SkillColumn"));
+                     class_skill.icon = num(desc.get(found->second, "IconCel"));
+                     class_skill.name = std::string(desc.get(found->second, "str name"));
++                    class_skill.description = desc.get(found->second, "str long");
++                    class_skill.short_description = desc.get(found->second, "str short");
+                 }
+                 names.emplace_back(skills.get(row, "skill"));
+                 list.push_back(std::move(class_skill));
+@@ -1421,7 +1511,10 @@ std::optional<GameData> open_game_data(const fs::path& data_dir, const fs::path&
          d2d::mpq::Stack mpqs;
          auto push = [&](const fs::path& path) {
              mpqs.push(path);
@@ -13656,7 +13920,7 @@ index 959440a..87efe10 100644
          };
          // 1.14d's patch layer ranks above everything (game.exe opens
          // patch_d2.mpq first). An explicit patch (d2d.cfg `patch =`, which
-@@ -1462,8 +1553,8 @@ std::optional<GameData> open_game_data(const fs::path& data_dir, const fs::path&
+@@ -1462,8 +1555,8 @@ std::optional<GameData> open_game_data(const fs::path& data_dir, const fs::path&
          // silent in load_scene and per-class loaders skip on miss.
          if (const auto d2char = find("d2char.mpq")) push(*d2char);
          // Sounds: expansion speech, speech, effects, music (Sounds.txt paths).
@@ -13667,7 +13931,7 @@ index 959440a..87efe10 100644
              if (const auto path = find(name)) push(*path);
          if (patched) check_patch_layer(mpqs);
  
-@@ -1506,7 +1597,16 @@ void load_game_tables(GameData& game_data, const d2d::mpq::Stack& mpqs) {
+@@ -1506,7 +1599,16 @@ void load_game_tables(GameData& game_data, const d2d::mpq::Stack& mpqs) {
  void load_game_world(GameData& game_data, d2d::mpq::Stack& mpqs, std::uint32_t map_seed) {
      const auto start_ms = d2d::log::ms();
      auto act1 = std::make_unique<d2d::drlg::OutdoorAssets>();
@@ -13685,7 +13949,7 @@ index 959440a..87efe10 100644
      place_act1(game_data, mpqs, *act1, map_seed);
      // The other levels build when they're first wanted (GameData::level).
      game_data.builder = std::make_shared<GameData::LevelBuilder>();
-@@ -1514,6 +1614,12 @@ void load_game_world(GameData& game_data, d2d::mpq::Stack& mpqs, std::uint32_t m
+@@ -1514,6 +1616,12 @@ void load_game_world(GameData& game_data, d2d::mpq::Stack& mpqs, std::uint32_t m
      load_npcs(game_data, mpqs);
      load_monsters(game_data, mpqs);
      load_skills(game_data, mpqs);
@@ -13698,7 +13962,7 @@ index 959440a..87efe10 100644
      d2d::log::info("Loading game data... done ({} ms)", d2d::log::ms() - start_ms);
      d2d::log::info("  Items: {}; sounds: {}; town NPCs/objects: {}",
                     game_data.item_tables ? "tables loaded" : "no item tables",
-@@ -1535,8 +1641,9 @@ std::optional<GameData> load_game_data(const fs::path& data_dir, const fs::path&
+@@ -1535,8 +1643,9 @@ std::optional<GameData> load_game_data(const fs::path& data_dir, const fs::path&
  }
  
  // A new game's seed and difficulty (the mazes' room counts, LvlMaze Rooms(N) / Rooms(H)).
@@ -13710,7 +13974,7 @@ index 959440a..87efe10 100644
      for (auto& [id, job] : game_data.builder->jobs) job.wait();
      game_data.builder->jobs.clear();
      game_data.difficulty = difficulty;                  // the builds read it (build_maze): after they're done
-@@ -1546,9 +1653,23 @@ void set_map_seed(GameData& game_data, std::uint32_t seed, int difficulty) {
+@@ -1546,9 +1655,23 @@ void set_map_seed(GameData& game_data, std::uint32_t seed, int difficulty) {
                  .night_ambience = old.night_ambience, .day_event = old.day_event, .night_event = old.night_event,
                  .event_delay = old.event_delay, .light = old.light, .rain = old.rain };
      game_data.town = std::move(town);
@@ -16127,7 +16391,7 @@ index 4bfbc55..1eb2a62 100644
  inline constexpr int kWeaponRack = 20;
  inline constexpr int kMalusStand = 21;      // the Horadric Malus' stand
 diff --git a/components/rules/rules.hpp b/components/rules/rules.hpp
-index 566d39d..b079666 100644
+index 566d39d..904c8c5 100644
 --- a/components/rules/rules.hpp
 +++ b/components/rules/rules.hpp
 @@ -39,6 +39,7 @@ struct ItemInfo {
@@ -16159,7 +16423,15 @@ index 566d39d..b079666 100644
      int gem_sockets = 0, auto_prefix = 0, magic_lvl = 0;  // gemsockets (+0x138), auto prefix (+0xf8), magic lvl (+0x140)
      bool has_inv = false, no_durability = false;          // hasinv (+0x137), nodurability (+0x113)
      bool quest_diff = false;                              // questdiffcheck (+0x12b): stat 356 = the difficulty made in
-@@ -117,6 +121,9 @@ struct ClassSkill {
+@@ -110,6 +114,7 @@ struct VendorItem { std::string code; int min = 0, max = 0, magic_min = 0, magic
+ // the class's 30 skills, -1 for none.
+ struct ClassSkill {
+     std::string name;                  // string table key
++    std::string description, short_description;
+     int page = 0, row = 0, col = 0, icon = 0;
+     int req_level = 1, max_level = 20;
+     std::array<int, 3> req{ -1, -1, -1 };
+@@ -117,6 +122,9 @@ struct ClassSkill {
  
  // An affix / unique / set modifier: Properties.txt code, param, range.
  struct Mod { std::string code, param; int min = 0, max = 0; };
@@ -16169,7 +16441,7 @@ index 566d39d..b079666 100644
  // MagicPrefix / MagicSuffix row.
  struct Affix {
      std::string name;
-@@ -127,8 +134,8 @@ struct Affix {
+@@ -127,8 +135,8 @@ struct Affix {
      int class_specific = -1;                    // classspecific (ama .. ass = 0 .. 6), -1 any (row +0x66)
  };
  // UniqueItems / SetItems row (without separators, as the save's IDs).
@@ -16180,7 +16452,7 @@ index 566d39d..b079666 100644
  struct Special {
      std::string code; int level = 0, rarity = 1; bool enabled = true; std::vector<Mod> mods; bool ladder = false, nolimit = false; int set = -1;
      std::string index;                                     // its "index" name (cubemain's names, FUN_006bd3c0)
-@@ -142,7 +149,7 @@ struct PropFunc { int func = 0, stat = -1, val = 0; };
+@@ -142,7 +150,7 @@ struct PropFunc { int func = 0, stat = -1, val = 0; };
  // belong to it (the record's +0xc).
  struct SetBonus { std::vector<Mod> partial, full; int pieces = 0; };
  // DifficultyLevels gamble odds, per 100000 (rare/set/unique).
@@ -16189,7 +16461,7 @@ index 566d39d..b079666 100644
  
  // D2's seed (FUN_0045c370 / FUN_0045c3e0): 64 bits as {low, high}; a
  // step is low * 0x6AC690C5 + high, split back into low and high. A roll
-@@ -185,10 +192,13 @@ struct Tables {
+@@ -185,10 +193,13 @@ struct Tables {
      std::unordered_map<std::string, ItemType> types;       // by type code
      std::unordered_map<std::string, ItemInfo> item_info;   // by item code
      std::unordered_map<std::string, ItemBase> item_base;   // by item code
@@ -16204,7 +16476,7 @@ index 566d39d..b079666 100644
      // Vendors (docs/research/re/store.md): per game.exe vendor index (0
      // Akara, 1 Gheed, 2 Charsi, 3 Fara, 4 Lysander, 5 Drognan, 6 Hratli,
      // 7 Alkor, 8 Ormus, 9 Elzix, 10 Asheara, 11 Cain, 12 Halbu, 13
-@@ -209,8 +219,13 @@ struct Tables {
+@@ -209,8 +220,13 @@ struct Tables {
      std::vector<Superior> superior;
      std::vector<std::string> skill_itype;                  // Skills.txt itypea1 by Id (staffmods)
      std::vector<std::pair<int, int>> skill_levels;         // Skills.txt reqlevel, maxlvl by Id (FUN_00644710 / FUN_004aa8b0)
@@ -16218,7 +16490,7 @@ index 566d39d..b079666 100644
      std::vector<std::string> item_order;                  // item codes in the Items table's order (weapons, armor, misc)
      std::vector<SetBonus> set_bonuses;                    // by Sets.txt row
      std::unordered_map<std::string, std::vector<PropFunc>> properties;
-@@ -225,12 +240,14 @@ struct Tables {
+@@ -225,12 +241,14 @@ struct Tables {
      std::array<std::array<QualityRatio, 6>, 4> quality_ratio{};
      // misc.txt potions: life / mana restored (hpregen / manarecovery: that
      // much over `ticks`; hitpoints / mana on a rejuvenation: percent, at once).
@@ -16234,7 +16506,7 @@ index 566d39d..b079666 100644
  struct Store {
      int npc = -1, vendor = -1, tab = 0;        // npc: the caller's NPC index
      int hc_idx = -1;                            // the vendor's MonStats hcIdx
-@@ -240,7 +257,9 @@ struct Store {
+@@ -240,7 +258,9 @@ struct Store {
      std::array<std::vector<d2d::d2s::Item>, 4> tabs;
      std::array<bool, 4> pressed{};
      std::vector<std::string> perm;              // PermStoreItems: buying doesn't use them up
@@ -16244,7 +16516,7 @@ index 566d39d..b079666 100644
      int reduced = 0;                            // the player's item_reducedprices (stat 87), 0..99: off buy, gamble and repair
      // A store opens on its first tab with anything on it.
      void first_tab() { tab = int(std::ranges::find_if(tabs, [](const auto& page) { return !page.empty(); }) - tabs.begin()) % 4; }
-@@ -364,70 +383,199 @@ inline bool is_repair_vendor(int hc_idx) {
+@@ -364,70 +384,199 @@ inline bool is_repair_vendor(int hc_idx) {
  }
  
  
@@ -16493,7 +16765,7 @@ index 566d39d..b079666 100644
  }
  
  // Repair cost at the NPC (FUN_0062efb0 mode 3): the buy base with its
-@@ -435,40 +583,24 @@ inline bool restocks(const Tables& tables, const d2d::d2s::Item& item) {
+@@ -435,40 +584,24 @@ inline bool restocks(const Tables& tables, const d2d::d2s::Item& item) {
  // and the quest rep mults / 1024; 0 when there's nothing to repair.
  // A stack that restocks pays for its missing quantity instead (its base
  // a unit's, its durability free). Ethereal items can't be repaired.
@@ -16549,7 +16821,7 @@ index 566d39d..b079666 100644
  }
  
  // Paying (FUN_00576d90): the purse first, then the stash; nothing taken
-@@ -481,6 +613,30 @@ inline bool pay(d2d::d2s::Stats& stats, std::int64_t cost) {
+@@ -481,6 +614,30 @@ inline bool pay(d2d::d2s::Stats& stats, std::int64_t cost) {
      return true;
  }
  
@@ -16580,7 +16852,7 @@ index 566d39d..b079666 100644
  // Repairs item i (gold first from the inventory, then the stash, as a
  // buy). False if it's whole or you can't pay.
  inline bool store_repair(const Tables& tables, const Store& store, d2d::d2s::Item& item, d2d::d2s::Stats& stats) {
-@@ -489,37 +645,108 @@ inline bool store_repair(const Tables& tables, const Store& store, d2d::d2s::Ite
+@@ -489,37 +646,108 @@ inline bool store_repair(const Tables& tables, const Store& store, d2d::d2s::Ite
      const auto from_inv = std::min<std::int64_t>(stats.get(d2d::d2s::kGold), cost);
      stats.values[d2d::d2s::kGold] -= from_inv;
      stats.values[d2d::d2s::kGoldBank] -= cost - from_inv;
@@ -16707,7 +16979,7 @@ index 566d39d..b079666 100644
      // Carried gold first, then the stash (the store shows it for that).
      // ponytail: that order is a guess; the server's buy isn't RE'd.
      const auto from_inv = std::min<std::int64_t>(stats.get(d2d::d2s::kGold), price);
-@@ -529,10 +756,47 @@ inline bool store_buy(const Tables& tables, Store& store, int index, std::vector
+@@ -529,10 +757,47 @@ inline bool store_buy(const Tables& tables, Store& store, int index, std::vector
      return true;
  }
  
@@ -16756,7 +17028,7 @@ index 566d39d..b079666 100644
      const int price = item_price(tables, items[index], store.npc_id, true, store.header);
      stats.values[d2d::d2s::kGold] = std::min<std::int64_t>(stats.get(d2d::d2s::kGold) + price,
                                                         stats.get(d2d::d2s::kLevel) * 10000);
-@@ -541,14 +805,6 @@ inline void store_sell(const Tables& tables, Store& store, std::size_t index, st
+@@ -541,14 +806,6 @@ inline void store_sell(const Tables& tables, Store& store, std::size_t index, st
  }
  
  // Is type t (or one of its Equiv ancestors) the type want?
@@ -16771,7 +17043,7 @@ index 566d39d..b079666 100644
  // BodyLocs.txt codes -> body slot (d2s slot numbering: 1 head .. 10 gloves).
  inline int body_slot(std::string_view code) {
      static constexpr std::string_view kCodes[11] = { "", "head", "neck", "tors", "rarm", "larm",
-@@ -579,18 +835,36 @@ inline const ItemInfo* info_of(const Tables& tables, const d2d::d2s::Item& item)
+@@ -579,18 +836,36 @@ inline const ItemInfo* info_of(const Tables& tables, const d2d::d2s::Item& item)
      return found != tables.item_info.end() ? &found->second : nullptr;
  }
  
@@ -16814,7 +17086,7 @@ index 566d39d..b079666 100644
  }
  
  // A two-handed weapon fills both hands (a Barbarian swings 1or2handed
-@@ -608,6 +882,8 @@ inline bool hands_ok(const Tables& tables, const d2d::d2s::Item& first, const d2
+@@ -608,6 +883,8 @@ inline bool hands_ok(const Tables& tables, const d2d::d2s::Item& first, const d2
      const auto* second_info = info_of(tables, second);
      if (!first_info || !second_info) return false;
      const bool first_quiver = type_is(tables, first_info->type, "misl"), second_quiver = type_is(tables, second_info->type, "misl");
@@ -16823,7 +17095,7 @@ index 566d39d..b079666 100644
      if (blocks_other_hand(tables, first, wearer)) return second_quiver;
      if (blocks_other_hand(tables, second, wearer)) return first_quiver;
      const bool first_weapon = type_is(tables, first_info->type, "weap"), second_weapon = type_is(tables, second_info->type, "weap");
-@@ -615,12 +891,48 @@ inline bool hands_ok(const Tables& tables, const d2d::d2s::Item& first, const d2
+@@ -615,12 +892,48 @@ inline bool hands_ok(const Tables& tables, const d2d::d2s::Item& first, const d2
      return first_weapon != second_weapon;
  }
  
@@ -16872,7 +17144,7 @@ index 566d39d..b079666 100644
  // Put `held` into a stored grid (location 0; panel 1 inventory, 4 cube,
  // 5 stash) with its top-left cell at (col, row).
  inline bool put_in_grid(const Tables& tables, std::vector<d2d::d2s::Item>& items, std::optional<d2d::d2s::Item>& held,
-@@ -638,6 +950,15 @@ inline bool put_in_grid(const Tables& tables, std::vector<d2d::d2s::Item>& items
+@@ -638,6 +951,15 @@ inline bool put_in_grid(const Tables& tables, std::vector<d2d::d2s::Item>& items
              hit = int(i);
          }
      }
@@ -16888,7 +17160,7 @@ index 566d39d..b079666 100644
      auto put = std::move(*held);
      held.reset();
      if (hit >= 0) { held = std::move(items[std::size_t(hit)]); items.erase(items.begin() + hit); }
-@@ -675,6 +996,24 @@ inline bool equip(const Tables& tables, std::vector<d2d::d2s::Item>& items, std:
+@@ -675,6 +997,24 @@ inline bool equip(const Tables& tables, std::vector<d2d::d2s::Item>& items, std:
      return true;
  }
  
@@ -16913,7 +17185,7 @@ index 566d39d..b079666 100644
  // Put `held` in belt box `box` (0..boxes-1): potions, scrolls — ItemTypes
  // Beltable along the Equiv chain.
  // ponytail: swapping in a smaller belt doesn't check the rows it'd lose.
-@@ -967,17 +1306,18 @@ inline void apply_mod(const Tables& tables, const Mod& mod, std::vector<d2d::d2s
+@@ -967,17 +1307,18 @@ inline void apply_mod(const Tables& tables, const Mod& mod, std::vector<d2d::d2s
  
  // Affix level for an item of level ilvl with base qlvl (the known D2
  // formula): ilvl - qlvl/2 below 99 - qlvl/2, else 2*ilvl - 99.
@@ -16936,7 +17208,7 @@ index 566d39d..b079666 100644
      int total = 0;
      for (std::size_t row = 1; row < list.size(); ++row) {
          const auto& affix = list[row];
-@@ -1026,9 +1366,30 @@ inline int pick_affix(const Tables& tables, const std::vector<Affix>& list, cons
+@@ -1026,9 +1367,30 @@ inline int pick_affix(const Tables& tables, const std::vector<Affix>& list, cons
  // comes off `rng` (stores, gambling, imbue) and none of the above is
  // rolled; base damage isn't kept on the item, so low's 75%, ethereal's 3/2
  // and dmg%'s +1 max damage on a weak weapon only reach its props.
@@ -16968,7 +17240,7 @@ index 566d39d..b079666 100644
      d2d::d2s::Item item;
      item.code = code;
      item.identified = true;
-@@ -1094,9 +1455,9 @@ inline d2d::d2s::Item generate_item(const Tables& tables, const std::string& cod
+@@ -1094,9 +1456,9 @@ inline d2d::d2s::Item generate_item(const Tables& tables, const std::string& cod
          }
      };
      // FUN_00557450's tail on every quality: ethereal, sockets, the class affix.
@@ -16980,7 +17252,7 @@ index 566d39d..b079666 100644
              item.ethereal = true;                          // FUN_0065e4d0
              if (kind == 1) item.defense = item.defense * 3 / 2;
              if (has_durability()) { item.max_durability = item.max_durability / 2 + 1; item.durability = max_durability(); }
-@@ -1190,7 +1551,10 @@ inline d2d::d2s::Item generate_item(const Tables& tables, const std::string& cod
+@@ -1190,7 +1552,10 @@ inline d2d::d2s::Item generate_item(const Tables& tables, const std::string& cod
      };
      if (quality <= 3) return plain(quality);
      auto special = [&](const std::vector<Special>& list) {
@@ -16992,7 +17264,7 @@ index 566d39d..b079666 100644
          int total = 0, pick = -1;
          for (const auto& row : list) if (fits(row)) total += std::max(1, row.rarity);
          if (total == 0) return -1;
-@@ -1241,27 +1605,39 @@ inline d2d::d2s::Item generate_item(const Tables& tables, const std::string& cod
+@@ -1241,27 +1606,39 @@ inline d2d::d2s::Item generate_item(const Tables& tables, const std::string& cod
          }
          quality = 6;
      }
@@ -17041,7 +17313,7 @@ index 566d39d..b079666 100644
      if (quality == 4 && unit_seed && base) {
          // Magic (FUN_00557450 case 4 -> FUN_005565e0): a prefix, then a
          // suffix (one at least: the suffix is forced when no prefix came),
-@@ -1383,65 +1759,59 @@ inline int gamble_price(const Tables& tables, const std::string& code, int clvl,
+@@ -1383,65 +1760,59 @@ inline int gamble_price(const Tables& tables, const std::string& code, int clvl,
      return int(price_reduced((lvl + mix) * ((level * 2 + 1) / 3 + 20) / 15, reduced));
  }
  
@@ -17141,7 +17413,7 @@ index 566d39d..b079666 100644
      return true;
  }
  
-@@ -1616,6 +1986,18 @@ inline std::string drink_at(const Tables& tables, std::vector<d2d::d2s::Item>& i
+@@ -1616,6 +1987,18 @@ inline std::string drink_at(const Tables& tables, std::vector<d2d::d2s::Item>& i
  inline std::string drink_item(const Tables& tables, std::vector<d2d::d2s::Item>& items, int id) {
      return drink_at(tables, items, std::ranges::find(items, id, &d2d::d2s::Item::id));
  }
@@ -17160,7 +17432,7 @@ index 566d39d..b079666 100644
  inline std::string drink_belt(const Tables& tables, std::vector<d2d::d2s::Item>& items, int col) {
      return drink_at(tables, items, std::ranges::find_if(items, [&](const d2d::d2s::Item& item) { return item.location == d2d::d2s::item_location::kBelt && item.column == col; }));
  }
-@@ -1674,13 +2056,13 @@ inline int potion_rate(int old_rate, int left, int amount, int len) {
+@@ -1674,13 +2057,13 @@ inline int potion_rate(int old_rate, int left, int amount, int len) {
  //   (FUN_0063c600). Without autobelt isc / tsc never go (FUN_0063c560);
  // - else the inventory's first free spot (FUN_005600a0); no room leaves it
  //   on the ground (FUN_0055c9a0 message 0x17: the class's "can't carry").
@@ -17178,7 +17450,7 @@ index 566d39d..b079666 100644
      using d2d::d2s::Item;
      const auto in_inventory = [](const Item& carried) { return carried.location == d2d::d2s::item_location::kStored && carried.panel == d2d::d2s::item_panel::kInventory; };
      const auto max_stack = [&](const std::string& code) { const auto found = tables.item_base.find(code); return found != tables.item_base.end() ? found->second.max_stack : 0; };
-@@ -1700,13 +2082,15 @@ inline Pickup pick_up(const Tables& tables, std::vector<d2d::d2s::Item>& items,
+@@ -1700,13 +2083,15 @@ inline Pickup pick_up(const Tables& tables, std::vector<d2d::d2s::Item>& items,
              return Pickup::kStays;
          }
      } else if (base != tables.item_base.end() && base->second.stackable && type_row != tables.types.end() && type_row->second.autostack) {
