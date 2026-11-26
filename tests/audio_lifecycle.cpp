@@ -26,6 +26,7 @@ int main() try {
  audio.render_samples(audio.dev,pcm.data(),pcm.size());audio.update();
  if(!audio.ambience.src)return 6;
  bool audible=false;for(auto x:pcm)audible|=x!=0;if(!audible)return 7;
+ audio.stop(audio.ambience);
  // A short WAV forces repeated end-of-file wraps while queued music plays.
  const auto archive_path=std::filesystem::temp_directory_path()/"d2-music-stream-test.mpq";std::filesystem::remove(archive_path);
  HANDLE archive{},file{};
@@ -33,8 +34,9 @@ int main() try {
  if(!SFileCreateFile(archive,"music.wav",0,DWORD(wav.size()),0,MPQ_FILE_COMPRESS,&file)||!SFileWriteFile(file,wav.data(),DWORD(wav.size()),MPQ_COMPRESSION_ZLIB)||!SFileFinishFile(file)||!SFileCloseArchive(archive))return 11;
  d2d::mpq::Stack music_mpq;music_mpq.push(archive_path);auto stream=music_mpq.open("music.wav");
  if(!stream||!audio.start_music_stream(std::move(*stream),123,.5f,true))return 12;
+ // Ignore the transition tail and low-level output dither. The test WAV peaks at 1000.
  bool heard=false;
- for(int i=0;i<300;++i){audio.render_samples(audio.dev,pcm.data(),pcm.size());for(auto x:pcm)heard|=x!=0;audio.update();if(!audio.music.src||audio.music.sound!=123)return 13;}
+ for(int i=0;i<300;++i){audio.render_samples(audio.dev,pcm.data(),pcm.size());if(i>2)for(auto x:pcm)heard|=std::abs(int(x))>32;audio.update();if(!audio.music.src||audio.music.sound!=123)return 13;}
  if(!heard||audio.music_buffers.size()!=4)return 14;
  // A transient source underrun must not destroy a looping streamed song.
  const auto looping_source=audio.music.src;alSourceStop(looping_source);audio.update();
