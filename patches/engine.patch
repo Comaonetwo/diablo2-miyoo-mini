@@ -1455,7 +1455,7 @@ index d47420c..be00169 100644
      void close();
  
 diff --git a/apps/d2d/gamepad_map.hpp b/apps/d2d/gamepad_map.hpp
-index 4f10b48..1adf222 100644
+index 4f10b48..6021d7b 100644
 --- a/apps/d2d/gamepad_map.hpp
 +++ b/apps/d2d/gamepad_map.hpp
 @@ -25,9 +25,10 @@ enum class Context { Title, Menu, Game, Panel, Shop };
@@ -1513,7 +1513,7 @@ index 4f10b48..1adf222 100644
  // The cursor's hop in a panel: the spot `points` nearest in the d-pad's
  // direction, a spot off to the side counting double, so a press goes along
  // a grid's row or column before it leaves it. Index or -1.
-@@ -111,23 +125,42 @@ public:
+@@ -111,23 +125,43 @@ public:
  
      // `seconds` since the last frame. A pad that went away is a default
      // Sample: every button lets go, so nothing stays held.
@@ -1529,11 +1529,12 @@ index 4f10b48..1adf222 100644
 +            ? back_seconds_ + std::max(0.f, elapsed >= 0.f ? elapsed : seconds) : 0.f;
 +        const bool free_cursor = sample.digital && sample[Button::Back];
 +        const bool cursor_only = free_cursor && back_seconds_ >= config_.cursor_chord_seconds;
++        const bool short_chord = free_cursor && !cursor_only;
 +        if (cursor_only) back_used_ = true;
 +        if (free_cursor && (sample[Button::DpadUp] || sample[Button::DpadDown] || sample[Button::DpadLeft] || sample[Button::DpadRight]
 +                            || sample[Button::South] || sample[Button::North] || sample[Button::Start])) back_used_ = true;
 +        out.cursor_mode = free_cursor;
-+        out.large_text_toggle = free_cursor && pressed(Button::Start);
++        out.large_text_toggle = short_chord && pressed(Button::Start);
          const bool game = context == Context::Game || context == Context::Panel || context == Context::Shop;
          const bool panel = context == Context::Panel || context == Context::Shop, shop = context == Context::Shop;
  
@@ -1558,7 +1559,7 @@ index 4f10b48..1adf222 100644
              out.rclick_press = secondary && !secondary_prev_;
              secondary_prev_ = secondary;
          } else {
-@@ -137,53 +170,88 @@ public:
+@@ -137,53 +171,101 @@ public:
          // Right stick: the cursor. In the menus the left one moves it too.
          float cursor_x = sample.rx, cursor_y = sample.ry;
          if (!game) { cursor_x += sample.lx; cursor_y += sample.ly; }
@@ -1593,10 +1594,10 @@ index 4f10b48..1adf222 100644
 -            key(Button::Back, Key::QuestLog);
 -            key(Button::LeftStick, Key::ToggleRun);
 +            if (!free_cursor) key(Button::Start, Key::Escape);
-+            if(sample.digital&&panel&&sample[Button::Back]&&pressed(Button::Start)){out.quick_sort=true;out.large_text_toggle=false;back_used_=true;}
++            if (short_chord && panel && pressed(Button::Start)){out.quick_sort=true;out.large_text_toggle=false;back_used_=true;}
 +            if (sample.digital) {
-+                if(sample[Button::Back]&&pressed(Button::North)){if(panel&&!shop)out.quick_drop=true;else if(!panel)out.keys.push_back(Key::ToggleRun);back_used_=true;}
-+                if(sample[Button::Back]&&pressed(Button::West)&&!panel){out.keys.push_back(Key::SwapWeapons);back_used_=true;}
++                if (short_chord && pressed(Button::North)){if(panel&&!shop)out.quick_drop=true;else if(!panel)out.keys.push_back(Key::ToggleRun);back_used_=true;}
++                if (short_chord && pressed(Button::West) && !panel){out.keys.push_back(Key::SwapWeapons);back_used_=true;}
 +                if(sample[Button::Back]){
 +                    if (!cursor_only) {key(Button::DpadUp,Key::SkillTree);key(Button::DpadDown,Key::QuestLog);key(Button::DpadLeft,Key::ShowBelt);key(Button::DpadRight,Key::Mercenary);}
 +                    if(sample[Button::DpadUp]||sample[Button::DpadDown]||sample[Button::DpadLeft]||sample[Button::DpadRight])back_used_=true;
@@ -1607,7 +1608,14 @@ index 4f10b48..1adf222 100644
 +                    back_used_ = false;
 +                }
 +                if (panel&&!shop&&!sample[Button::Back])out.return_belt=pressed(Button::North);
-+                if (panel) {key(Button::East, Key::Escape);if(!shop){if(sample[Button::Back]&&pressed(Button::West)){out.quick_belt=true;back_used_=true;}else out.rclick_press=pressed(Button::West);}}
++                if (panel) {
++                    key(Button::East, Key::Escape);
++                    if (!shop && pressed(Button::West)) {
++                        out.quick_belt = short_chord;
++                        out.rclick_press = !free_cursor;
++                        if (short_chord) back_used_ = true;
++                    }
++                }
 +                else if (!free_cursor) { out.skill_picker = pressed(Button::East); out.interact_press = pressed(Button::West); }
 +            } else {
 +                key(Button::North, Key::Inventory);
@@ -1617,15 +1625,21 @@ index 4f10b48..1adf222 100644
              if (left_trigger_ && !left_trigger_was) out.keys.push_back(Key::SwapWeapons);
              if (shop) {
 -                out.trade_press = pressed(Button::West);
-+                out.trade_press=pressed(Button::West);out.fill_trade=out.trade_press&&sample[Button::Back];if(out.fill_trade)back_used_=true;
++                out.trade_press = !cursor_only && pressed(Button::West);out.fill_trade=out.trade_press&&sample[Button::Back];if(out.fill_trade)back_used_=true;
                  out.tab_step = int(pressed(Button::RightShoulder)) - int(pressed(Button::LeftShoulder));
              } else {
 -                key(Button::West, Key::Character);
 -                key(Button::LeftShoulder, Key::SkillTree);
 -                key(Button::RightShoulder, Key::Automap);
 +                if (sample.digital) {
-+                    if(sample[Button::Back]){key(Button::LeftShoulder,Key::Belt3);key(Button::RightShoulder,Key::Belt4);if(sample[Button::LeftShoulder]||sample[Button::RightShoulder])back_used_=true;}
-+                    else{key(Button::LeftShoulder, Key::HealPotion); key(Button::RightShoulder, Key::ManaPotion);}
++                    if (short_chord) {
++                        key(Button::LeftShoulder, Key::Belt3);
++                        key(Button::RightShoulder, Key::Belt4);
++                        if (sample[Button::LeftShoulder] || sample[Button::RightShoulder]) back_used_ = true;
++                    } else if (!free_cursor) {
++                        key(Button::LeftShoulder, Key::HealPotion);
++                        key(Button::RightShoulder, Key::ManaPotion);
++                    }
 +                } else {
 +                    key(Button::West, Key::Character);
 +                    key(Button::LeftShoulder, Key::SkillTree);
@@ -1667,7 +1681,7 @@ index 4f10b48..1adf222 100644
          prev_ = held;
          return out;
      }
-@@ -200,7 +268,10 @@ private:
+@@ -200,7 +282,10 @@ private:
      bool hysteresis(float value, bool down) const { return down ? value > config_.trigger_release : value >= config_.trigger_press; }
  
      Config config_;

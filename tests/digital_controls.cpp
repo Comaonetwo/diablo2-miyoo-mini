@@ -123,6 +123,25 @@ int main()try{
     s.held[std::size_t(Button::Back)]=true;s.held[std::size_t(Button::North)]=true;
     a=m.step(s,Context::Panel,.04f);check(a.quick_drop&&a.keys.empty()&&!a.rclick_press&&!a.click_press);
     s.held.fill(false);check(m.step(s,Context::Panel,.04f).keys.empty());
+    // Each button is a fresh press after SELECT enters manual cursor mode.
+    for (auto context : {Context::Panel, Context::Game, Context::Shop}) {
+        Mapper mapper;
+        Sample input;
+        input.digital = true;
+        input.held[std::size_t(Button::Back)] = true;
+        mapper.step(input, context, .04f);
+        mapper.step(input, context, .04f, 1.f);
+        for (auto button : {Button::North, Button::West, Button::Start,
+                            Button::LeftShoulder, Button::RightShoulder}) {
+            input.held[std::size_t(button)] = true;
+            auto out = mapper.step(input, context, .04f);
+            check(out.cursor_mode && out.keys.empty() && !out.interact_press && !out.rclick_press);
+            check(!out.quick_drop && !out.quick_belt && !out.quick_sort && !out.large_text_toggle);
+            check(!out.trade_press && !out.fill_trade);
+            input.held[std::size_t(button)] = false;
+            mapper.step(input, context, .04f);
+        }
+    }
     check(visible_drop(-1.f,-4.9f,false)&&!visible_drop(5.5f,0,false));
     check(!visible_drop(-1.f,-4.9f,true)&&visible_drop(0,0,true));
     check(visible_drop(1.75f,-1.75f,1)&&!visible_drop(1.75f,-1.75f,2)&&visible_drop(0,0,2));
